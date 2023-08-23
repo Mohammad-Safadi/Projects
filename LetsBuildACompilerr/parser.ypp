@@ -1,0 +1,359 @@
+%{
+    #include <iostream>
+    #include "hw3_output.hpp"
+    #include "bison_objects.hpp"
+    #include "llvm_parser.hpp"
+
+    using namespace std;
+
+    #define YYSTYPE Node*
+
+    extern int yylineno;
+    extern int yylex();
+    extern char* yytext;
+    void yyerror(const char*);
+%}
+
+
+    %token VOID;
+    %token INT;
+    %token BYTE;
+    %token B;
+    %token BOOL;
+    %token OVERRIDE;
+    %token CONST;
+    %token TRUE;
+    %token FALSE;
+    %token RETURN;
+    %token IF;
+    %token WHILE;
+    %token BREAK;
+    %token CONTINUE;
+    %token SC;
+    %token COMMA;
+    %token ID;
+    %token NUM;
+    %token STRING;
+    
+
+    %left LBRACE;
+    %left RBRACE;
+
+
+    %right ASSIGN;
+
+    %left OR;
+    %left AND;
+    
+    %left EQ NEQ;
+   
+    %nonassoc GT GTE LT LTE;
+
+    %left PLUS MINUS;
+    %left MUL DIV;
+
+    %right NOT;
+
+    %left LPAREN;
+    %left RPAREN;
+
+    %nonassoc ELSE;
+%%
+    Program: Funcs                                                              { CheckProgram(); CodeBuffer::instance().printGlobalBuffer(); CodeBuffer::instance().printCodeBuffer();}
+    Funcs: /*epsilon*/                                                          {}    
+    Funcs: FuncDecl Funcs                                                       {}
+    FuncDecl: overRide RetType ID LPAREN Formals RPAREN {$$ = new FuncDecl();
+                                                    AddFunction((OverRide*)$1 ,$2, (IDType*)$3, (FormalsList*)$5);
+                                                    OpenScope(); PushParamters((FormalsList*)$5);
+                                                    LLVM::instance().handleFuncDecl((OverRide*)$1 ,$2, (IDType*)$3, (FormalsList*) $5);
+                                                }
+
+                LBRACE Statements M2            {string ret_val = $2->type == types::VOID ? "void" : "i32 0";
+                                                    CodeBuffer::instance().emit("ret " + ret_val);
+                                                }
+                
+                RBRACE                          {CloseScope();
+	                                                CodeBuffer::instance().emit("}");
+                                                    CodeBuffer::instance().bpatch($9->nextList, $10->quad);
+                                                    CodeBuffer::instance().bpatch($9->breakList, $10->quad);
+                                                }
+
+    
+    RetType: Type                                                               {$$ = $1;}
+        overRide: /*epsilon*/                                                   {$$ = new OverRide(false);}
+        overRide: OVERRIDE                                                      {$$ = new OverRide(true);}
+    RetType: VOID                                                               {$$ = new Node(types::VOID);}
+    Formals: /*epsilon*/                                                        {$$ = new FormalsList();}
+    Formals: FormalsList                                                        {$$ = $1;}
+    FormalsList: FormalDecl                                                     {$$ = new FormalsList(); ((FormalsList*)$$)->AddParameter(*((FormalDecl*)$1));}
+    FormalsList: FormalDecl COMMA FormalsList                                   {$$ = (FormalsList*)$3; ((FormalsList*)$$)->AddParameter((*(FormalDecl*)$1));}
+    FormalDecl: Type ID                                                         {$$ = new FormalDecl(new OverRide(false), $1->type, ((IDType*)$2)->name);}
+    Statements: Statement                                                       {$$ = $1;}
+    Statements: Statements M2 Statement                                         {$$ = $3; 
+                                                                                    CodeBuffer::instance().bpatch($1->nextList, $2->quad);
+                                                                                    $$->continueList = CodeBuffer::instance().merge($$->continueList, $1->continueList);
+                                                                                    $$->breakList = CodeBuffer::instance().merge($$->breakList, $1->breakList);}
+    Statement: LBRACE                                                           {OpenScope();} Statements RBRACE {CloseScope(); $$ = $3;}
+    Statement: Type ID SC                                                       {DeclareVariable($1, (IDType*)$2); LLVM::instance().genStore((IDType*)$3, "0");}
+    Statement: Type ID ASSIGN Exp SC                                             {InitVariable($1, (IDType*)$2, (Exp*)$4); if(((Exp*)$4)->type == types::BOOL){
+                                                                                                        LLVM::instance().handleBoolExp((Exp*)$4);
+                                                                                                        }
+                                                                                                        LLVM::instance().genStore((IDType*)$2, ((Exp*)$4)->val_reg);}
+    Statement: ID ASSIGN Exp SC                                                 {AssignVariable((IDType*)$1, (Exp*)$3);	if(((Exp*)$3)->type == types::BOOL){
+                                                                                                                       		LLVM::instance().handleBoolExp((Exp*)$3);
+                                                                                                                       	}
+                                                                                                                       	LLVM::instance().genStore((IDType*)$1, ((Exp*)$3)->val_reg);}
+    Statement: Call SC                                                          {}
+    Statement: RETURN SC                                                        {ValidateRetTypeVoid(); LLVM::instance().genReturn(types::VOID, "");}
+    Statement: RETURN Exp SC                                                    {ValidateRetTypeNonVoid($2->type);
+                                                                                    types::TypeName ret_type = ((Exp*)$2)->type;
+                                                                                    	if(ret_type == types::BOOL){
+                                                                                    			LLVM::instance().handleBoolExp((Exp*)$2);
+                                                                                    	}
+                                                                                    	LLVM::instance().genReturn(ret_type, ((Exp*)$2)->val_reg);
+                                                                                    }
+
+    Statement: IF LPAREN M1 M2 Statement CloseScope                             {
+                                                                                 CodeBuffer::instance().bpatch(((Exp*)$3)->trueList, $4->quad);
+                                                                                 $$->nextList = CodeBuffer::instance().merge(((Exp*)$3)->falseList, $5->nextList);
+                                                                                 $$->continueList = CodeBuffer::instance().merge($$->continueList, $5->continueList);
+                                                                                 $$->breakList = CodeBuffer::instance().merge($$->breakList, $5->breakList);
+                                                                                 }
+    Statement: IF LPAREN M1 M2 Statement CloseScope N {OpenScope();}
+                                            M2 Statement{CloseScope();      CodeBuffer::instance().bpatch(((Exp*)$3)->trueList, $4->quad);
+                                                                        	CodeBuffer::instance().bpatch(((Exp*)$3)->falseList, $9->quad);
+                                                                        	$$->nextList = CodeBuffer::instance().merge($5->nextList, $7->nextList);
+                                                                        	$$->nextList = CodeBuffer::instance().merge($$->nextList, $10->nextList);
+                                                                        	$$->continueList = CodeBuffer::instance().merge($5->continueList, $10->continueList);
+                                                                        	$$->breakList = CodeBuffer::instance().merge($5->breakList, $10->breakList);}
+    Statement: WHILE LPAREN M2 Exp RPAREN {OpenWhileScope($4);}
+    M2 Statement {CloseWhileScope(); 	CodeBuffer::instance().bpatch($8->nextList, ((Exp*)$3)->quad);
+                                     	CodeBuffer::instance().bpatch(((Exp*)$4)->trueList, $7->quad);
+
+                                     	$$->nextList = CodeBuffer::instance().merge(((Exp*)$4)->falseList, $8->breakList);
+                                     	vector<pair<int, BranchLabelIndex>> address_list = LLVM::instance().genBrToLabel();
+                                     	CodeBuffer::instance().bpatch(address_list, ((Exp*)$3)->quad);
+
+                                     	CodeBuffer::instance().bpatch($8->continueList, ((Exp*)$3)->quad);}
+    Statement: BREAK SC                                                         {CheckBreak();	int address = CodeBuffer::instance().emit("br label @");
+                                                                                              	$$->breakList = CodeBuffer::instance().makelist({address, FIRST});}
+    Statement: CONTINUE SC                                                      {CheckContinue(); 	int address = CodeBuffer::instance().emit("br label @");
+                                                                                  	$$->continueList = CodeBuffer::instance().makelist({address, FIRST});}
+    Call: ID LPAREN ExpList RPAREN                                              {$$ = Call((IDType*)$1, ((ExpList*)$3)->params); LLVM::instance().handleCall((Exp*)$$, (IDType*)$1, ((ExpList*)$3)->params);}
+    Call: ID LPAREN RPAREN                                                      {$$ = Call((IDType*)$1, vector<Exp*>()); LLVM::instance().handleCall((Exp*)$$, (IDType*)$1, vector<Exp*>());}
+    ExpList: Exp                                                                {$$ = new ExpList();
+                                                                                 ((ExpList*)$$)->AddParameter((Exp*)$1);
+                                                                                 if($1->type == types::BOOL){
+                                                                                     LLVM::instance().handleBoolExp((Exp*)$1);
+                                                                                 }
+                                                                                 }
+
+    ExpList: Exp COMMA                                                         {if($1->type == types::BOOL){                                                                                 
+                                                                                    LLVM::instance().handleBoolExp((Exp*)$1);
+                                                                                    vector<pair<int,BranchLabelIndex>> addres_list = LLVM::instance().genBrToLabel();
+                                                                                    string label = CodeBuffer::instance().genLabel();
+                                                                                    CodeBuffer::instance().bpatch(addres_list, label);                                                                                
+                                                                                 }
+                                                                                 
+                                                                                 }
+
+             ExpList                                                             {$$ = new ExpList(*((ExpList*)$4));
+                                                                                    ((ExpList*)$$)->AddParameter((Exp*)$1);
+                                                                                 }
+
+    Type: INT                                                                   {$$ = new Node(types::INT);}
+    Type: BYTE                                                                  {$$ = new Node(types::BYTE);}
+    Type: BOOL                                                                  {$$ = new Node(types::BOOL);}
+    Exp: LPAREN Exp RPAREN                                                      {$$ = $2;}
+    Exp: Exp PLUS Exp                                                           {$$ = Binop($1, $3);
+
+	string res_reg = LLVM::instance().genReg();
+	LLVM::instance().genBinop(res_reg, ((Exp*)$1)->val_reg, '+',((Exp*)$3)->val_reg);
+
+	if(((Exp*)$1)->type == types::BYTE && ((Exp*)$3)->type == types::BYTE){
+		string trunc_res = LLVM::instance().genReg();
+		LLVM::instance().genTrunc32To8(trunc_res, res_reg);
+		string zext_res = LLVM::instance().genReg();
+		LLVM::instance().genZext8To32(zext_res, trunc_res);
+		res_reg = zext_res;
+	}
+	((Exp*)$$)->val_reg = res_reg;}
+
+    Exp: Exp MINUS Exp{ $$ = Binop($1, $3);
+    	string res_reg = LLVM::instance().genReg();
+    	LLVM::instance().genBinop(res_reg, ((Exp*)$1)->val_reg, '-',((Exp*)$3)->val_reg);
+
+    	if(((Exp*)$1)->type == types::BYTE && ((Exp*)$3)->type == types::BYTE){
+    		string trunc_res = LLVM::instance().genReg();
+    		LLVM::instance().genTrunc32To8(trunc_res, res_reg);
+    		string zext_res = LLVM::instance().genReg();
+    		LLVM::instance().genZext8To32(zext_res, trunc_res);
+    		res_reg = zext_res;
+    	}
+
+    	((Exp*)$$)->val_reg = res_reg;}
+    Exp: Exp MUL Exp                                                            {$$ = Binop($1, $3);
+    	string res_reg = LLVM::instance().genReg();
+    	LLVM::instance().genBinop(res_reg, ((Exp*)$1)->val_reg, '*',((Exp*)$3)->val_reg);
+
+    	if(((Exp*)$1)->type == types::BYTE && ((Exp*)$3)->type == types::BYTE){
+    		string trunc_res = LLVM::instance().genReg();
+    		LLVM::instance().genTrunc32To8(trunc_res, res_reg);
+    		string zext_res = LLVM::instance().genReg();
+    		LLVM::instance().genZext8To32(zext_res, trunc_res);
+    		res_reg = zext_res;
+    	}
+    	((Exp*)$$)->val_reg = res_reg;}
+    Exp: Exp DIV Exp                                                            {$$ = Binop($1, $3);
+           LLVM::instance().genDivByZeroCheck(((Exp*)$3)->val_reg);
+        	string res_reg = LLVM::instance().genReg();
+        	LLVM::instance().genBinop(res_reg, ((Exp*)$1)->val_reg, '/',((Exp*)$3)->val_reg);
+        	if(((Exp*)$1)->type == types::BYTE && ((Exp*)$3)->type == types::BYTE){
+        		string trunc_res = LLVM::instance().genReg();
+        		LLVM::instance().genTrunc32To8(trunc_res, res_reg);
+        		string zext_res = LLVM::instance().genReg();
+        		LLVM::instance().genZext8To32(zext_res, trunc_res);
+        		res_reg = zext_res;
+        	}
+        	((Exp*)$$)->val_reg = res_reg;}
+    Exp: ID                                                                     {$$ = ReduceIDToExp((IDType*)$1);
+    int offset =  GetEntry(((IDType*)$1)->name).offset;
+    	if(offset < 0){
+    		((Exp*)$$)->val_reg = '%' + to_string(-(offset + 1));
+    	}
+    	else{
+    		string bp_reg = GetCurrentFuncBP();
+    		string ptr_reg = LLVM::instance().genReg();
+    		string val_reg = LLVM::instance().genReg();
+    		string code;
+
+    		code = ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + bp_reg
+    			+ ", i32 0, i32 " + to_string(offset) + "\n";
+    		code += val_reg + " = load i32, i32* " + ptr_reg;
+
+    		CodeBuffer::instance().emit(code);
+    		((Exp*)$$)->val_reg = val_reg;
+    	}
+
+    	if(((Exp*)$$)->type == types::BOOL){
+    		LLVM::instance().genCompare(((Exp*)$$));
+    	}}
+    Exp: Call                                                                   {$$ = $1; 
+                                                                                    if($$->type == types::BOOL){
+                                                                                        LLVM::instance().genCompare((Exp*)$$);
+                                                                                    }
+                                                                                        
+                                                                                }
+    Exp: NUM                                                                    {$$ = new Exp(types::INT); ((Exp*)$$)->val_reg = to_string(((Num*)$1)->value);}
+    Exp: NUM B                                                                  {$$ = ReduceNumBToExp((Num*)$1); ((Exp*)$$)->val_reg = to_string(((Num*)$1)->value);}
+    Exp: STRING                                                                 {$$ = new Exp(types::STRING); LLVM::instance().handleReduceStringToExp((Exp*)$$ ,yytext);}
+    Exp: TRUE                                                                   {$$ = new Exp(types::BOOL); $$->trueList = LLVM::instance().genBrToLabel();}
+    Exp: FALSE                                                                  {$$ = new Exp(types::BOOL); $$->falseList = LLVM::instance().genBrToLabel();}
+    Exp: NOT Exp                                                                {$$ = LogicalOp($2); 
+                                                                                    $$->trueList = $2->falseList;
+                                                                                    $$->falseList = $2->trueList;
+                                                                                }
+    Exp: Exp AND M2 Exp                                                         {$$ = LogicalBinop($1, $4); LLVM::instance().handleAnd((Exp*)$$, (Exp*)$1, $3, (Exp*)$4);}
+    Exp: Exp OR M2 Exp                                                          {$$ = LogicalBinop($1, $4); LLVM::instance().handleOr((Exp*)$$, (Exp*)$1, $3, (Exp*)$4);}
+    Exp: Exp EQ Exp                                                             {$$ = Relop($1, $3);
+    string llvm_op = op_map.at("==");
+    	string cmp_reg = LLVM::instance().genReg();
+
+    	string cmp_code = cmp_reg + " = icmp " + llvm_op + " i32 " + ((Exp*)$1)->val_reg + ", " +((Exp*)$3)->val_reg;
+    	string br_code = "br i1 " + cmp_reg + ", label @, label @";
+
+    	CodeBuffer::instance().emit(cmp_code);
+    	int br_code_address = CodeBuffer::instance().emit(br_code);
+
+    	((Exp*)$$)->trueList = CodeBuffer::instance().merge(((Exp*)$$)->trueList, CodeBuffer::instance().makelist({br_code_address, FIRST}));
+    	((Exp*)$$)->falseList = CodeBuffer::instance().merge(((Exp*)$$)->falseList, CodeBuffer::instance().makelist({br_code_address, SECOND}));}
+    Exp: Exp NEQ Exp                                                            { $$ = Relop($1, $3);
+            string llvm_op = op_map.at("!=");
+        	string cmp_reg = LLVM::instance().genReg();
+
+        	string cmp_code = cmp_reg + " = icmp " + llvm_op + " i32 " + ((Exp*)$1)->val_reg + ", " +((Exp*)$3)->val_reg;
+        	string br_code = "br i1 " + cmp_reg + ", label @, label @";
+
+        	CodeBuffer::instance().emit(cmp_code);
+        	int br_code_address = CodeBuffer::instance().emit(br_code);
+
+        	((Exp*)$$)->trueList = CodeBuffer::instance().merge(((Exp*)$$)->trueList, CodeBuffer::instance().makelist({br_code_address, FIRST}));
+        	((Exp*)$$)->falseList = CodeBuffer::instance().merge(((Exp*)$$)->falseList, CodeBuffer::instance().makelist({br_code_address, SECOND}));}
+    Exp: Exp LT Exp                                                             {$$ = Relop($1, $3);
+                string llvm_op = op_map.at("<");
+            	string cmp_reg = LLVM::instance().genReg();
+
+            	string cmp_code = cmp_reg + " = icmp " + llvm_op + " i32 " + ((Exp*)$1)->val_reg + ", " +((Exp*)$3)->val_reg;
+            	string br_code = "br i1 " + cmp_reg + ", label @, label @";
+
+            	CodeBuffer::instance().emit(cmp_code);
+            	int br_code_address = CodeBuffer::instance().emit(br_code);
+
+            	((Exp*)$$)->trueList = CodeBuffer::instance().merge(((Exp*)$$)->trueList, CodeBuffer::instance().makelist({br_code_address, FIRST}));
+            	((Exp*)$$)->falseList = CodeBuffer::instance().merge(((Exp*)$$)->falseList, CodeBuffer::instance().makelist({br_code_address, SECOND}));}
+    Exp: Exp LTE Exp                                                            {$$ = Relop($1, $3);
+                    string llvm_op = op_map.at("<=");
+                	string cmp_reg = LLVM::instance().genReg();
+
+                	string cmp_code = cmp_reg + " = icmp " + llvm_op + " i32 " + ((Exp*)$1)->val_reg + ", " +((Exp*)$3)->val_reg;
+                	string br_code = "br i1 " + cmp_reg + ", label @, label @";
+
+                	CodeBuffer::instance().emit(cmp_code);
+                	int br_code_address = CodeBuffer::instance().emit(br_code);
+
+                	((Exp*)$$)->trueList = CodeBuffer::instance().merge(((Exp*)$$)->trueList, CodeBuffer::instance().makelist({br_code_address, FIRST}));
+                	((Exp*)$$)->falseList = CodeBuffer::instance().merge(((Exp*)$$)->falseList, CodeBuffer::instance().makelist({br_code_address, SECOND}));}
+    Exp: Exp GT Exp                                                             {$$ = Relop($1, $3);
+                    string llvm_op = op_map.at(">");
+                	string cmp_reg = LLVM::instance().genReg();
+
+                	string cmp_code = cmp_reg + " = icmp " + llvm_op + " i32 " + ((Exp*)$1)->val_reg + ", " +((Exp*)$3)->val_reg;
+                	string br_code = "br i1 " + cmp_reg + ", label @, label @";
+
+                	CodeBuffer::instance().emit(cmp_code);
+                	int br_code_address = CodeBuffer::instance().emit(br_code);
+
+                	((Exp*)$$)->trueList = CodeBuffer::instance().merge(((Exp*)$$)->trueList, CodeBuffer::instance().makelist({br_code_address, FIRST}));
+                	((Exp*)$$)->falseList = CodeBuffer::instance().merge(((Exp*)$$)->falseList, CodeBuffer::instance().makelist({br_code_address, SECOND}));}
+    Exp: Exp GTE Exp                                                            {$$ = Relop($1, $3);
+                    string llvm_op = op_map.at(">=");
+                	string cmp_reg = LLVM::instance().genReg();
+
+                	string cmp_code = cmp_reg + " = icmp " + llvm_op + " i32 " + ((Exp*)$1)->val_reg + ", " +((Exp*)$3)->val_reg;
+                	string br_code = "br i1 " + cmp_reg + ", label @, label @";
+
+                	CodeBuffer::instance().emit(cmp_code);
+                	int br_code_address = CodeBuffer::instance().emit(br_code);
+
+                	((Exp*)$$)->trueList = CodeBuffer::instance().merge(((Exp*)$$)->trueList, CodeBuffer::instance().makelist({br_code_address, FIRST}));
+                	((Exp*)$$)->falseList = CodeBuffer::instance().merge(((Exp*)$$)->falseList, CodeBuffer::instance().makelist({br_code_address, SECOND}));}
+    Exp: LPAREN Type RPAREN Exp                                                 {$$ = Cast($4, $2); LLVM::instance().handleCast((Exp*)$$, $2->type, (Exp*)$4);}
+    M1 : Exp RPAREN {$$ = $1; 
+                    OpenIfScope($1);
+                    }
+
+    CloseScope : {CloseScope();}     
+    M2 : {$$ = new Node();
+            vector<pair<int, BranchLabelIndex>> address_list = LLVM::instance().genBrToLabel();
+            $$->quad = CodeBuffer::instance().genLabel();
+            CodeBuffer::instance().bpatch(address_list ,$$->quad);
+            }
+    N : ELSE {$$ = new Node();
+                $$->nextList = LLVM::instance().genBrToLabel();}                             
+%%
+
+
+void yyerror(const char*){
+    output::errorSyn(yylineno);
+    exit(0);
+}
+
+
+int main(){
+    BeginProgram();
+    LLVM::instance().handleProgramInit();
+    auto ret = yyparse();
+    CheckProgram();
+    EndProgram();
+    return ret;
+}

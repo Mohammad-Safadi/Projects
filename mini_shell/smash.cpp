@@ -13,7 +13,6 @@ int main(int argc, char* argv[]) {
         perror("smash error: failed to set ctrl-C handler");
     }
 
-    //TODO: setup sig alarm handler
 
     SmallShell& smash = SmallShell::getInstance();
     while(true) {
@@ -23,12 +22,10 @@ int main(int argc, char* argv[]) {
         } else{
             std::cout << "smash> ";
         }
-//        std::cout<<"kosss"<<std::endl;
 
         std::string cmd_line;
         std::getline(std::cin, cmd_line);
         smash.executeCommand(cmd_line.c_str());
-//        std::cout<<"fuckkk"<<std::endl;
     }
     return 0;
 }

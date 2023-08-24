@@ -100,13 +100,6 @@ static bool IsNumber(const string& str){
     return true;
 }
 
-
-
-
-
-
-
-
 /**  SmallShell class methods **/
 SmallShell::SmallShell() :mCurrentFg(nullptr),mPrevPwd(nullptr),mUseCustomPrompt(false)
         ,mpJobsList(),newlist(),mPid(getpid()),mLastPrompt(
@@ -115,31 +108,20 @@ SmallShell::SmallShell() :mCurrentFg(nullptr),mPrevPwd(nullptr),mUseCustomPrompt
 }
 
 
-
-
-
 /**  Command class methods **/
 
 Command::Command(const char *cmdLine):mNewCmd(cmdLine){
     if(_isBackgroundComamnd(cmdLine)) this->mIsCommandBackground= true;
-//    mpJobsList->RemoveFinishedJobs();
     string first_word = _trim(string(cmdLine));
-//    bool is_background = _isBackgroundComamnd(cmdLine);
     if (first_word[first_word.length() - 1] == '&') {
         first_word = first_word.substr(0, first_word.length() - 1);
     }
     string commandS = _trim(string(cmdLine));
-//    char *args[ARGS_ARRAY_LENGTH];
     first_word = first_word.substr(0, commandS.find_first_of(" \n"));
     if(first_word=="cd" || first_word=="pwd" || first_word=="chprompt"|| first_word=="showpid") this->IsCommandBuiltIn= true;
     if(first_word=="jobs" || first_word=="kill" || first_word=="fg"|| first_word=="bg") this->IsCommandBuiltIn= true;
     if(first_word=="quit") this->IsCommandBuiltIn= true;
-
-//    this->mNewCmd=(char*)malloc(sizeof (char)* strlen(cmdLine) +1);
-//    this->mNewCmd(cmdLine);
-//    strcpy(mNewCmd, cmdLine);
     if(_isBackgroundComamnd(cmdLine)) mIsCommandBackground = true;
-//    _removeBackgroundSign(mNewCmd);
 }
 
 
@@ -152,23 +134,13 @@ Command::Command(const char *cmdLine):mNewCmd(cmdLine){
 ExternalCommand::ExternalCommand(const char *cmd_line) : Command(cmd_line){}
 
 void ExternalCommand::execute(char **args, int num) {
-//    string t=mNewCmd;
-//    _removeBackgroundSign(mNewCmd);
+
     pid_t pid=fork();
     std::string t=this->mNewCmd;
-//    std::cout<< t << std::endl;
-//    t.erase(std::remove)
+
     t.erase(std::remove(t.begin(),t.end(),'&'),t.end());
     setpgrp();
     char*  argv[4]={const_cast<char*>("/bin/bash"),const_cast<char*>("-c"),const_cast<char*>(t.c_str()), nullptr};
-
-//    char* binBash= const_cast<char*>("/bin/bash");
-//    char* minC=const_cast<char*>("c");
-//
-//    char*  argv[4]={binBash,minC,const_cast<char*>(t.c_str()), nullptr};
-
-//    string bash={"/bin/bash\0"};
-//    char*  argv[4]={"/bin/bash","-c",const_cast<char*>(t.c_str()), nullptr};
 
     if(pid == -1) //fail
     {
@@ -178,8 +150,6 @@ void ExternalCommand::execute(char **args, int num) {
     if(pid==0) // child process
     {
         execv("/bin/bash",argv);
-        /** we don't need an if statement because in case execv fails it returns here, and
-         * if it does not fail it doesnt return to this line (that's how execv works) **/
         perror("smash error: execvp failed");
         exit(0);
     }
@@ -211,17 +181,6 @@ void ExternalCommand::execute(char **args, int num) {
         }
 
 
-//        SmallShell& smash = SmallShell::getInstance();
-        /**  here it is a background command that needs to be executed in the background
-         * so we need to add a new job**/
-//         JobsList::JobEntry to_enter_job =JobsList::JobEntry();
-//         to_enter_job.mJobStatus=background;
-//         to_enter_job.mPid=pid;
-//         to_enter_job.mJobId=smash.mpJobsList->GetMaxId()+1;
-//         to_enter_job.command=this->mNewCmd;
-//         to_enter_job.isBackground= true;
-//         to_enter_job.mEntryTime=time(nullptr);
-
 
         if(!flag){
             for (JobsList::JobEntry &job: smash.mpJobsList->list) {
@@ -239,12 +198,9 @@ void ExternalCommand::execute(char **args, int num) {
             smash.mpJobsList->list.push_back(to_enter_job);
         }
         return;
-//         int max_id= smash.mpJobsList->GetMaxId();
-//         JobsList::JobEntry x
+
     }
 
-
-//    t.erase(std::remove(t.begin(),t.end(),'&'),t.end());
 }
 
 
@@ -363,7 +319,6 @@ void ForegroundCommand::execute(char **args, int num) {
             return;
 
         }
-//        int helper=std::atoi(args[1]);
         if( !IsNumber(args[1])) {
             std::cerr << "smash error: fg: invalid arguments" << std::endl;
             return;
@@ -413,7 +368,6 @@ void ForegroundCommand::execute(char **args, int num) {
                 return;
             }
             std::cout<<it->command;
-//            if(it->isBackground) std::cout<<" &";
             std::cout<<" : "<<it->mPid<<std::endl;
             int status;
             it->mJobStatus=foreground;
@@ -425,11 +379,6 @@ void ForegroundCommand::execute(char **args, int num) {
     }
 
 }
-
-
-
-
-
 
 
 /**  kill command, "kill", KillCommand class methods **/
@@ -460,32 +409,20 @@ void KillCommand::execute(char **args, int num) {
 
     string helper=args[1];
     helper.erase(0,1);
-//    if(!IsNumber(helper)){
-//        std::cerr<<"smash error: kill: invalid arguments"<<std::endl;
-//        return;
-//    }
     int sig= std::stoi(helper);
-//    if(sig>=)
 
     auto& shell = SmallShell::getInstance();
     JobsList::JobEntry* it= shell.mpJobsList->GetJobById(std::stoi(args[2]));
     if(it!= nullptr)
     {
-
         if(kill(it->mPid, sig) == -1)
         {
             perror("smash error: kill failed");
-//            std::cout<< "smash error: kill failed"<<std::endl;
             return;
         }
         if(sig == SIGSTOP || sig ==SIGTSTP){
             it->mJobStatus=stopped;
         } else if( sig == SIGCONT){
-//            {
-//                if(it->isBackground){
-//                    it->mJobStatus=background;
-//                }
-//            }
             it->mJobStatus=background;
         } else if(sig == SIGKILL)
         {
@@ -501,17 +438,14 @@ void KillCommand::execute(char **args, int num) {
 }
 
 
-
 /**  print jobs command, "jobs", JobsCommand class methods **/
 
 JobsCommand::JobsCommand(const char *cmd_line) : BuiltInCommand(cmd_line){};
 
 void JobsCommand::execute(char **args, int num) {
     auto& shell = SmallShell::getInstance();
-//    shell.mpJobsList->RemoveFinishedJobs();
     shell.mpJobsList->PrintJobsList();
 }
-
 
 /**  JobsList class methods **/
 
@@ -534,7 +468,6 @@ int JobsList::GetNumOfJobs() {
 
 
 void JobsList::PrintJobsList() {
-//    this->RemoveFinishedJobs();
     time_t time_on_exec= time(nullptr);
     for (int i=0 ;i<this->GetMaxId()+10;i++) {//change to : for(JobsEntry& job: list)
         JobEntry* it= this->GetJobById(i);
@@ -542,8 +475,6 @@ void JobsList::PrintJobsList() {
         if(it->mJobStatus!=empty)
         {
             std::cout << "[" << it->mJobId << "] " << it->command;
-//                if (it.isBackground)
-//                    std::cout << "&";
             std::cout << " : " << it->mPid << " " << difftime(time_on_exec , it->mEntryTime) << " secs";
             if (it->mJobStatus == gotCtrlZ)
                 std::cout << " (stopped)";
@@ -560,8 +491,6 @@ void JobsList::PrintJobsListForQuit() {
         if(it== nullptr)continue;
         if(it->mJobStatus==empty ||it->mPid==0 || it->mJobId ==0 ) continue;
         std::cout<<it->mPid<<": "<<it->command<<std::endl;
-//        if(job.isBackground) std::cout<<"&";
-//        std::cout<<std::endl;
     }
 }
 
@@ -621,12 +550,6 @@ int JobsList::GetMaxId() {
     return res;
 }
 
-
-
-
-
-
-
 JobsList::JobEntry *JobsList::GetLastJob() {
     int max_id=-1;
     for (JobEntry& job:list){
@@ -644,7 +567,6 @@ JobsList::JobEntry *JobsList::GetLastStoppedJob() {
     return GetJobById(max_id);
 }
 
-
 void JobsList::RemoveFinishedJobs() {
     for (JobEntry &job: list) {
         if(job.mPid==0 || job.mJobStatus==empty || job.mJobId==0) continue;
@@ -653,31 +575,12 @@ void JobsList::RemoveFinishedJobs() {
                 job.mJobStatus = finished;
         }
     }
-
-
-
     for (JobEntry& job: list) {
         if(job.mJobStatus==finished){
             this->RemoveJobById(job.mJobId);
         }
     }
 }
-
-
-
-
-//    if(id>100 || id<0) { return nullptr; }
-//    JobEntry* it=list.begin();
-//    for (;  it!= list.end() ; it++) {
-//        if(it->mJobId==id)
-//            return it;
-//    }
-//    return nullptr;
-//}
-
-
-
-
 
 
 /**  change directory, "cd", changeDirCommand class methods **/
@@ -701,13 +604,11 @@ void ChangeDirCommand::execute(char **args, int num) {
             return;
         }
         else{
-            //char* it=malloc(sizeof (char)* strlen(shell.mPrevPwd) +1);
             char* tmp=get_current_dir_name();
             if(chdir(shell.mPrevPwd)==-1){
                 perror("smash error: chdir failed");
                 return;
             }
-            //            strcpy(it,shell.mPrevPwd);
             free(shell.mPrevPwd);
             shell.mPrevPwd=tmp;
             return;
@@ -908,7 +809,6 @@ void RedirectionCommand::execute(char **args, int num) {
     SmallShell& shell= SmallShell::getInstance();
     Command* command_ptr = shell.CreateCommand(cmd.c_str());
     char* argsNew[COMMAND_ARGS_MAX_LENGTH+3];
-//    auto x= const_cast<char*>(this->mNewCmd);
     int numNEw= _parseCommandLine(cmd.c_str(),argsNew);
     command_ptr->execute(argsNew,numNEw);
     for (int i = 0; i <  numNEw; ++i) {
@@ -937,8 +837,6 @@ void RedirectionCommand::execute(char **args, int num) {
 PipeCommand::PipeCommand(const char *cmd_line, bool background) : Command(cmd_line),mBackgroundPipe(background){}
 
 void PipeCommand::execute(char **args, int num) {
-//    SmallShell &smash = SmallShell::getInstance();
-//    smash.mpJobsList->RemoveFinishedJobs();
 
 
     int pipeFD[2];
@@ -969,33 +867,13 @@ void PipeCommand::execute(char **args, int num) {
 
     int firstFork=fork();
     if (firstFork ==0) {
-//        SmallShell &shell = SmallShell::getInstance();
-//        shell.mpJobsList->RemoveFinishedJobs();
-//        setpgrp();
-//        string barrier = this->mBackgroundPipe ? "|&" : "|";
-//        string left_cmd = mNewCmd.substr(0, mNewCmd.find(barrier));
-//        auto index = !this->mBackgroundPipe ? mNewCmd.find(barrier) + 1 : mNewCmd.find(barrier) + 2;
-//        string right_cmd = mNewCmd.substr(index, mNewCmd.size());
-//        left_cmd = _ltrim(_rtrim(left_cmd));
-//        right_cmd = _ltrim(_rtrim(right_cmd));
-//
-//
-//        if (right_cmd.find("&") != string::npos) {
-//            right_cmd = right_cmd.erase(right_cmd.find_last_of("&"));
-//            right_cmd = _ltrim(_rtrim(right_cmd));
-//        }
-//        SmallShell &tmp = SmallShell::getInstance();
-//        shared_ptr<Command> cmd_left(tmp.CreateCommand(left_cmd.c_str()));
-//        int stdFD=0, stdfd=0;
+
         if (!isBack) {
-//            stdFD=dup(1);
             dup2(pipeFD[1], 1);
         } else {
-//            stdfd=dup(2);
             dup2(pipeFD[1], 2);
         }
-//        close(pipeFD[0]);
-//        dup2(pipeFD[1],1);
+
         close(pipeFD[0]);
         close(pipeFD[1]);
         char* argsf[COMMAND_ARGS_MAX_LENGTH+3];
@@ -1006,24 +884,12 @@ void PipeCommand::execute(char **args, int num) {
         }
         if(!this->mBackgroundPipe){
             dup2(stdOutFd,1);
-//            close(stdFD);
             exit(0);
         }
         dup2(stdErrFd,2);
 
         exit(0);
 
-//        if (!this->mBackgroundPipe) {
-//            auto stdFD=dup(1);
-//            dup2(pipeFD[1], 1);
-//        } else {
-//            auto stdfd=dup(2);
-//            dup2(pipeFD[1], 2);
-//        }
-////        close(pipeFD[1]);
-//        close(pipeFD[0]);
-//        cmd_left->execute();
-//        exit(0);
     }
     else if(firstFork ==-1){
         perror("smash error: fork failed");
@@ -1031,35 +897,11 @@ void PipeCommand::execute(char **args, int num) {
     }
     int secFork=fork();
     if (secFork == 0) {
-//        SmallShell &shell = SmallShell::getInstance();
-//        shell.mpJobsList->RemoveFinishedJobs();
-////        dup2(pipeFD[0], 0);
-////        close(pipeFD[0]);
-////        close(pipeFD[1]);
-//        string barrier = this->mBackgroundPipe ? "|&" : "|";
-//        string left_cmd = mNewCmd.substr(0, mNewCmd.find(barrier));
-//        auto index = !this->mBackgroundPipe ? mNewCmd.find(barrier) + 1 : mNewCmd.find(barrier) + 2;
-//        string right_cmd = mNewCmd.substr(index, mNewCmd.size());
-//        left_cmd = _ltrim(_rtrim(left_cmd));
-//        right_cmd = _ltrim(_rtrim(right_cmd));
-//
-//        if (right_cmd.find("&") != string::npos) {
-//            right_cmd = right_cmd.erase(right_cmd.find_last_of("&"));
-//            right_cmd = _ltrim(_rtrim(right_cmd));
-//        }
-//
-//        SmallShell &tmp = SmallShell::getInstance();
-//        shared_ptr<Command> cmd_right(tmp.CreateCommand(right_cmd.c_str()));
-//        int stdFD=0, stdfd=0;
         if (!isBack) {
-//            stdFD=dup(0);
             dup2(pipeFD[0], 0);
         } else {
-//            stdfd=dup(2);
             dup2(pipeFD[0], 0);
         }
-//        close(pipeFD[1]);
-//        dup2(pipeFD[0],0);
         close(pipeFD[0]);
         close(pipeFD[1]);
         char* argss[COMMAND_ARGS_MAX_LENGTH+3];
@@ -1068,12 +910,6 @@ void PipeCommand::execute(char **args, int num) {
         for (int i = 0; i <  nums; ++i) {
             if(argss[i]) (free(argss[i]));
         }
-//        if(!this->mBackgroundPipe){
-//            dup2(stdFD,0);
-////            close(stdFD);
-//            exit(0);
-//        }
-//        dup2(stdfd,0);
         dup2(stdInFd,0);
         exit(0);
     }
@@ -1103,15 +939,7 @@ void PipeCommand::execute(char **args, int num) {
 
 }
 
-// TODO: Add your implementation for classes in Commands.h
-
-//SmallShell::SmallShell() {
-//// TODO: add your implementation
-//}
-
 SmallShell::~SmallShell() {
-// TODO: add your implementation
-}
 
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
@@ -1176,23 +1004,6 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
 }
 
 
-
-//  if(commandS.find(">>") != std::string::nops){
-//      mIsAppendRedirectCmd= true;
-//  } else if(commandS.find(">") != std::string::nops){
-//      mIsOverwriteRedirectCmd= true;
-//  } else if (commandS.find("|&")!= std::string::nops){
-//      mIsPipeBackground= true;
-//  } else if(commandS.find("|") != std::string::nops)
-//  {
-//      mIsPipeForeground= true;
-//  }
-
-
-
-
-
-
 void SmallShell::executeCommand(const char *cmd_line) {
     if(_trim(string(cmd_line)).compare("") == 0)
         return;
@@ -1205,11 +1016,4 @@ void SmallShell::executeCommand(const char *cmd_line) {
         if(args[i]) (free(args[i]));
     }
     delete cmd;
-
-
-    // TODO: Add your implementation here
-    // for example:
-    // Command* cmd = CreateCommand(cmd_line);
-    // cmd->execute();
-    // Please note that you must fork smash process for some commands (e.g., external commands....)
 }

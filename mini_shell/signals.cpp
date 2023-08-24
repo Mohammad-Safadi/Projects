@@ -10,10 +10,8 @@ void ctrlZHandler(int sig_num) {
     std::cout<<"smash: got ctrl-Z"<<std::endl;
 
     if(smash.mCurrentFg== nullptr){
-//        perror("ztrl z error happened: mCurrentFg is nullptr, there is no process that is running in the foreground");
         return;
     }
-//    std::cout<<"smash: got ctrl-Z"<<std::endl;
 
     if(kill(smash.mCurrentFg->mPid,SIGSTOP)==-1){
         perror("Smash error: kill failed");
@@ -43,7 +41,6 @@ void ctrlZHandler(int sig_num) {
             job.command= *t;
 
 
-//            string t =smash.mCurrentFg->command;
             job.mJobId=smash.mpJobsList->GetMaxId()+1;
             job.mEntryTime= time(nullptr);
             std::cout<<"smash: process "<<smash.mCurrentFg->mPid<<" was stopped"<<std::endl;
@@ -65,31 +62,11 @@ void ctrlCHandler(int sig_num) {
         perror("smash error: kill failed");
         return;
     }
-//    bool found= false;
-//    for (JobsList::JobEntry& job: smash.mpJobsList->list) {
-//        if(smash.mCurrentFg->mPid==job.mPid) found= true;
-//    }
+
     auto it=smash.mpJobsList->GetJobByPid(smash.mCurrentFg->mPid);
     if(it != nullptr){
         it->mJobStatus=finished;
-//        smash.mCurrentFg= nullptr;
-    }
-//    if(it== nullptr){
-//        for (JobsList::JobEntry& job: smash.mpJobsList->list) {
-//            if(job.mJobStatus==empty){
-//                job.mJobStatus=finished;
-//                job.
-//            }
-//        }
-//    } else{
-//
-//    }
-//    if(found){
-//        smash.mpJobsList->GetJobById(smash.mCurrentFg->mPid)->mJobStatus=finished;
-//    }
-//    if(!found){
-//
-//    }
+
     std::cout<<"smash: process "<<smash.mCurrentFg->mPid<<" was killed" << std::endl;
     smash.mCurrentFg->mJobStatus=finished;
     smash.mCurrentFg=nullptr;
@@ -97,7 +74,5 @@ void ctrlCHandler(int sig_num) {
 
 }
 
-void alarmHandler(int sig_num) {
-    // TODO: Add your implementation
-}
+
 

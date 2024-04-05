@@ -1,0 +1,1184 @@
+#include <HTTPClient.h>
+#include <DNSServer.h>
+#include <iostream>
+#include <HardwareSerial.h>
+#include <ArduinoJson.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <SPIFFS.h>
+#include <Preferences.h>
+#include <Adafruit_NeoPixel.h>
+#include <sstream>
+#include <WiFiManager.h>
+#include <WiFiClientSecure.h>
+#ifdef ESP32
+#include <WiFi.h>
+#else
+#include <ESP8266WiFi.h>
+#endif
+#include <string>
+#include <vector>
+#include <map>
+#include <algorithm>
+#include <bits/stdc++.h>
+#include <UniversalTelegramBot.h>
+
+
+using namespace std;
+
+
+#define BUTTON1_PIN 26
+#define BUTTON2_PIN 33
+#define BUTTON3_PIN 23
+#define BUTTON4_PIN 21
+#define BUTTON5_PIN 15
+
+#define LED1_PIN 27
+#define LED2_PIN 25
+#define LED3_PIN 22
+#define LED4_PIN 19
+#define LED5_PIN 2
+#define PIN_NEO_PIXEL 12
+#define NUMPIXELS 5
+#define START_G 32
+#define SWITCH_PIN 4
+
+struct UserData{
+    int numPresses;
+    double time;
+};
+
+unsigned long levels_time[] = {2000, 1800, 1600, 800, 400 };
+unsigned long led_pins[] = { LED1_PIN, LED2_PIN, LED3_PIN, LED4_PIN, LED5_PIN };
+unsigned long buttons_pins[] = {BUTTON1_PIN, BUTTON2_PIN, BUTTON3_PIN, BUTTON4_PIN, BUTTON5_PIN  };
+int first_mapping[] = {0,2,3,4,0,1};
+bool onelevel=false;
+
+void shuffleArray(int arr[], int n) {
+    srand(time(NULL)); // Seed the random number generator
+    for (int i = n - 1; i > 0; i--) {
+        int j = rand() % (i + 1); // Generate a random index from 0 to i
+        // Swap arr[i] with the element at random index j
+        int temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
+    }
+}
+
+String getColorName(uint32_t colorValue) {
+    uint8_t red = (colorValue >> 16) & 0xFF;    // Extract red component
+    uint8_t green = (colorValue >> 8) & 0xFF;   // Extract green component
+    uint8_t blue = colorValue & 0xFF;           // Extract blue component
+
+    int tolerance = 15;
+    if (red >= 255 - tolerance && green <= tolerance && blue <= tolerance) {
+        return "Red";
+    } else if (red <= tolerance && green >= 255 - tolerance && blue <= tolerance) {
+        return "Green";
+    } else if (red <= tolerance && green <= tolerance && blue >= 255 - tolerance) {
+        return "Blue";
+    } else if (red >= 255 - tolerance && green >= 255 - tolerance && blue >= 255 - tolerance) {
+        return "White";
+    } else if (red >= 255 - tolerance && green >= 255 - tolerance && blue <= tolerance) {
+        return "Yellow";
+    } else {
+        return "Unknown"; // Color doesn't match predefined colors
+    }
+}
+
+HardwareSerial MP3(2);
+int numbers[] = {0,1,2,3,4};
+
+int n = sizeof(numbers) / sizeof(numbers[0]);
+static byte start_byte = 0x7E;  // Start byte
+static byte end_byte = 0xEF;    // End byte
+
+static byte set_volume_CMD = 0x31;
+static byte play_index_CMD = 0x41;
+static byte play_filename_CMD = 0x42;
+static int8_t select_SD_CMD[] = { 0x7e, 0x03, 0X35, 0x01, 0xef };
+static int8_t reset_CMD[] = { 0x7e, 0x03, 0X35, 0x05, 0xef };
+void playcolorsound(int8_t directory, int8_t file){
+
+    Serial.print("playing directory ");
+    Serial.print(directory);
+    Serial.print(" file number ");
+    Serial.println(file);
+    MP3.write(start_byte);
+    byte msg_len = 0x04;
+    MP3.write(msg_len);
+    MP3.write(play_filename_CMD);
+    byte dir_ind = directory;
+    MP3.write(dir_ind);
+    byte file_ind = file;
+    MP3.write(file_ind);
+    MP3.write(end_byte);
+    delay(20);  //required for stability
+}
+
+void select_SD_card() {
+    Serial.println("MP3_select_SD_card");
+    int len = 4;
+    for (int i = 0; i <= len; i++) {
+        MP3.write(select_SD_CMD[i]);
+    }
+}
+
+
+bool reset_mp3() {
+    Serial.println("MP3 RESET");
+    MP3.flush();  //delete all data in serial2 buffer for MP3
+    int len = 5;
+    for (int i = 0; i < len; i++) {
+        MP3.write(reset_CMD[i]);
+    }
+    delay(50);              //give the mp3 player time to reset and return message
+    if (MP3.available()) {  //check if there is a response from the board (not reading the response itself)
+        return true;
+    } else {
+        return false;
+    }
+}
+
+
+void set_volume(byte volume) {
+    volume=15;
+    Serial.print("set volume= ");
+    Serial.print(volume);
+    Serial.println(" of 30");
+    MP3.write(start_byte);
+    byte msg_len = 0x03;
+    MP3.write(msg_len);
+    MP3.write(set_volume_CMD);
+    MP3.write(volume);
+    MP3.write(end_byte);
+    delay(20);  //required for stability
+}
+
+
+void setupMP3(int serial){
+    MP3.begin(serial, SERIAL_8N1, 17, 16);
+    delay(100);  //delay for stability
+    if (reset_mp3() == true) {
+        Serial.println("reset MP3 success");
+    } else {
+        Serial.println("reset MP3 fail");
+        delay(10000);
+    }
+    select_SD_card();  //ALWAYS select SD card at beginning
+    delay(1200);
+}
+
+
+////////////////////////////////////////////telegram//////////////////////////////
+
+int total_keys =0;
+ 
+String message;
+String _chatid;
+// Replace with your network credentials
+const char* ssid = "IOT_QUICK";
+const char* password = "12345678";
+Preferences pref;
+Preferences Ids;
+
+int extra = 0;
+unsigned int level = 0;
+char idResultRanking[50];
+char pressesResultRanking[50];
+char timeResultRanking[50];
+char avgResultRanking[50];
+char rankResult[50];
+double avg;
+
+char result[50];
+char result2[50];
+char resultTime[50];
+char resultAvg[50];
+char resultHighest[50];
+double curr_time;
+char resultId[50];
+double tot_time = 0;
+char resultLevel[50];
+
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
+Adafruit_NeoPixel NeoPixel = Adafruit_NeoPixel(NUMPIXELS, PIN_NEO_PIXEL, NEO_RGB + NEO_KHZ800);
+
+uint32_t colors[16];
+
+
+unsigned long ledStartTime = 0;
+bool ledOn = false;
+
+int counter = -1;
+
+int currentLEDNumber = 0;
+
+int ndx;
+int reading1;
+int reading2;
+int current = 1;
+double highest_score = 0;
+double avg_response_time = 0;
+unsigned long firstLedStartTime = 0;
+unsigned long lastLedPressedTime = 0;
+unsigned int num_of_games = 0;
+int botRequestDelay = 1000;
+unsigned long lastTimeBotRan;
+byte volume;
+
+double total_time = 0;
+double min_total_time = 0;
+double avg_response = 0;
+double highest_avg_response;
+int num_of_win_games = 0;
+String to_put_value;
+String to_put_value1;
+
+String table;
+
+int brightness = 150;
+int user_id;
+std::map<int, UserData> userMap;
+std::map<String,int> colorsmap;
+std::vector<std::pair<int, UserData>> vec;
+unsigned long ledOnTime = 5000;
+String keyboardJson;
+enum State_Message {
+    STATE_START_GAME,
+    STATE_LEVEL,
+    STATE_WAITING_NEXT_GAME,
+    ID_STATE,
+    SETTINGS_STATE
+};
+State_Message state_message = STATE_START_GAME;
+
+enum State {
+    STATE_START,
+    STATE_GAME,
+    STATE_WIN,
+    STATE_LOSE,
+    STATE_IDLE,
+    STATE_WIFI,
+    STATE_WIFI_IDLE
+};
+State current_state = STATE_IDLE;
+
+
+// Initialize Telegram BOT
+#define BOTtoken "7041922997:AAE2dkKic4Ryb7x7U72uh7hl8pu7cXGAjuE"  // your Bot Token (Get from Botfather)
+
+// Use @myidbot to find out the chat ID of an individual or a group
+// Also note that you need to click "start" on a bot before it can
+// message you
+
+#define CHAT_ID "1175839859"
+String choose_level;
+#ifdef ESP8266
+X509List cert(TELEGRAM_CERTIFICATE_ROOT);
+#endif
+
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOTtoken, client);
+
+String chat_id;
+//////////////////////////////////////////////////////////////////////////////
+//---------------------------------WIFI --------------------------------------//
+WiFiServer server(80);
+bool connection = false;
+bool res;
+WiFiManager wifiManager;
+std::vector<const char*> menu = { "wifi", "info" };
+
+bool checkIdIsValid(String to_check){
+    if(!Ids.isKey(to_check.c_str())){
+        return true;
+    }
+    return false;
+}
+
+
+String iterateNamespace(const char* namespacePrefix) {
+
+ int counterRank = 1;
+    // Get the total number of preferences stored in this namespace
+     int userIdPref;
+    double result_Pref;
+    String tableRanks;
+
+    int totalKeys = Ids.getInt("totalKeys", 0);
+    Serial.println("tot:");
+
+    Serial.println(totalKeys);
+
+    for (int i = 0; i < total_keys ; ++i) {
+        // Construct the key using the namespace prefix and the index
+        String key = String(namespacePrefix) + String("_") + String(i);
+        String key_t = String(namespacePrefix) + String("_") + String(i) + String("t");
+            
+            Serial.print("fat1");
+
+        Serial.println(key);
+        Serial.println(key_t);
+
+        // Retrieve the value associated with the key
+        userIdPref  = Ids.getInt(key.c_str(), 0);
+        result_Pref = Ids.getDouble(key_t.c_str(), 0);
+
+          Serial.println(userIdPref);
+          Serial.println(result_Pref);
+
+            // Key belongs to the namespace, retrieve its value and do something with it
+        sprintf(idResultRanking, "%d", userIdPref);
+        avg = result_Pref ;
+        sprintf(avgResultRanking, "%.3f", avg);
+        sprintf(rankResult, "%d", counterRank);
+        if(counterRank >= 10){
+            tableRanks += "|  -";
+            tableRanks += rankResult;
+            tableRanks += "-  | ";
+        }else{
+            tableRanks += "|   -";
+            tableRanks += rankResult;
+            tableRanks += "-   | ";
+        }
+
+        tableRanks += idResultRanking;
+        if(avg > 9.999 ){
+            tableRanks += " | ";
+        }else{
+            tableRanks += " |   ";
+        }
+        tableRanks += avgResultRanking;
+        tableRanks += " [sec/presses] |\n";
+        counterRank++;
+
+      }
+    
+    return tableRanks;
+    }
+    
+
+
+
+// Handle what happens when you receive new messages
+void handleNewMessages(int numNewMessages) {
+    Serial.println("handleNewMessages");
+    Serial.println(String(numNewMessages));
+
+    for (int i = 0; i < numNewMessages; i++) {
+        // Chat id of the requester
+        chat_id = String(bot.messages[i].chat_id);
+        if (chat_id != CHAT_ID) {
+
+            bot.sendMessage(chat_id, "Unauthorized user", "");
+            continue;
+        }
+
+        // Print the received message
+        String text = bot.messages[i].text;
+        Serial.println(text);
+        String name = bot.messages[i].from_name;
+        if (name == "") {
+            name = "Guest";
+        }
+
+        switch (state_message) {
+            case STATE_START_GAME:
+                if (text == "/start") {
+                    String welcome = "Welcome to QUICK RESPONSE GAME .\n";
+                    welcome += "Insert your Id! ";
+                    bot.sendMessageWithReplyKeyboard(chat_id, welcome, "", "", true);
+
+                    state_message = ID_STATE;
+                }
+                break;
+            case ID_STATE:
+                if (checkIdIsValid(text)) {
+
+                    int idValue = text.toInt();
+                    user_id = idValue;
+                    //Ids.putInt( text.c_str() , text.toInt()); // save users
+
+                    String to_put = "Ids" + String("_") + String(total_keys+1);
+                    Ids.putInt(to_put.c_str(),text.toInt());
+                    
+                    //String value = pref.getString(text.c_str());
+                    //Serial.println(value);
+
+                    if( digitalRead(SWITCH_PIN) == HIGH){
+                                      
+
+                        choose_level = "Choose the game level! ";
+                        keyboardJson = "[[\"level 1\",\"level 2\"], [\"level 3\",\"level 4\"],[\"level 5\"]]";
+                        bot.sendMessageWithReplyKeyboard(chat_id, choose_level, "", keyboardJson, true);
+                    }
+                    else {
+                    String welcome2 = "THIS IS A SOUND BASED RESPOSE GAME .\n";
+                    welcome2 += "PRESS BUTTONS BASED ON WHAT YOU HEAR \n";
+                    welcome2 += "ARE YOU EXCITED ? \n ";
+                    keyboardJson = "[[\"YESSSS !! \",\"OFCOURSE I AM !!\"]]";
+                    bot.sendMessageWithReplyKeyboard(chat_id, welcome2 ,"" ,keyboardJson, true);
+
+                        onelevel=true;
+                        state_message = STATE_LEVEL;
+                        break;
+                    }
+
+                      state_message = STATE_LEVEL;
+                } else {
+                    String another_id = "Invalid id! Please check if your Id is valid and insert it again";
+                    bot.sendMessageWithReplyKeyboard(chat_id, another_id, "", "", true);
+                }
+                break;
+            case STATE_LEVEL:
+
+                if (onelevel == true || text.indexOf("level 1") != -1 ) {
+
+                    bot.sendMessage(chat_id, "Got it! Press the green button to start the game! ", "");
+                    level = 1;
+                    //pref.putInt("GAME_LEVEL", level);
+                    ledOnTime = levels_time[level - 1];
+                    digitalWrite(START_G, HIGH); // start the game button
+                    current_state = STATE_START;
+                    state_message = STATE_WAITING_NEXT_GAME;
+                    extra = 0;
+                    onelevel=false;
+                }
+                if (text.indexOf("level 2") != -1) {
+                    bot.sendMessage(chat_id, "Got it! Press the green button to start the game! ", "");
+                    
+                    level = 1;
+                    //pref.putInt("GAME_LEVEL", level);
+                    
+                    ledOnTime = levels_time[level - 1];
+                    digitalWrite(START_G, HIGH); // start the game button
+                    current_state = STATE_START;
+                    state_message = STATE_WAITING_NEXT_GAME;
+                    extra = 16;
+                }
+                if (text.indexOf("level 3") != -1) {
+                    bot.sendMessage(chat_id, "Got it! Press the green button to start the game! ", "");
+                    level = 1;
+
+                    //pref.putInt("GAME_LEVEL", level);
+
+                    ledOnTime = levels_time[level - 1];
+                    digitalWrite(START_G, HIGH); // start the game button
+                    current_state = STATE_START;
+                    state_message = STATE_WAITING_NEXT_GAME;
+                    extra = 32;
+                }
+                if (text.indexOf("level 4") != -1) {
+                    bot.sendMessage(chat_id, "Got it! Press the green button to start the game! ", "");
+                    level = 1;
+
+                    //pref.putInt("GAME_LEVEL", level);
+
+                    ledOnTime = levels_time[level - 1];
+                    digitalWrite(START_G, HIGH); // start the game button
+                    current_state = STATE_START;
+                    state_message = STATE_WAITING_NEXT_GAME;
+                    extra = 48;
+                }
+                if (text.indexOf("level 5") != -1) {
+                    bot.sendMessage(chat_id, "Got it! Press the green button to start the game! ", "");
+                    level = 1;
+
+                    //pref.putInt("GAME_LEVEL", level);
+
+                    ledOnTime = levels_time[level - 1];
+                    digitalWrite(START_G, HIGH); // start the game button
+                    current_state = STATE_START;
+                    state_message = STATE_WAITING_NEXT_GAME;
+                    extra = 64;
+                }
+                break;
+            case STATE_WAITING_NEXT_GAME:
+                if (text == "/statistics") {
+
+                    //pref.getBytes("avgResultRanking" ,avgResultRanking,50* sizeof(char));
+
+                    string word = "Your highest score per second is:\n";
+                    avg = userMap[user_id].numPresses / userMap[user_id].time;
+                    sprintf(avgResultRanking, "%.3f", avg);
+                    word += avgResultRanking;
+                    word += " presses per second";
+                    bot.sendMessage(chat_id, word.c_str(), "");
+
+                    //pref.putBytes("avgResultRanking" ,avgResultRanking,50* sizeof(char));
+
+                }
+                if (text == "/rank") {
+
+                   /*pref.getBytes("resultAvg" ,resultAvg,50* sizeof(char ));
+                    pref.getBytes("resultLevel" ,resultLevel,50* sizeof(char));
+                    pref.getBytes("resultId" ,resultId,50* sizeof(char));
+                    pref.getBytes("avgResultRanking" ,avgResultRanking,50* sizeof(char));*/
+
+                    table = iterateNamespace("Ids");
+                    bot.sendMessage(chat_id, table.c_str(), "");
+                    Serial.print("hgj");
+                    /*pref.putBytes("resultAvg" ,resultAvg,50* sizeof(char ));
+                    pref.putBytes("resultLevel" ,resultLevel,50* sizeof(char));
+                    pref.putBytes("resultId" ,resultId,50* sizeof(char));
+                    pref.putBytes("avgResultRanking" ,avgResultRanking,50* sizeof(char));*/
+
+                }
+                if (text == "/new") {
+                    state_message = STATE_START_GAME;
+                }
+
+                if (text == "/quit") {
+                    keyboardJson = "[[\"\start\"]]";
+                    bot.sendMessageWithReplyKeyboard(chat_id, "Good luck! ", "", keyboardJson, true);
+                    current_state = STATE_IDLE;
+                    state_message = STATE_START_GAME;
+
+                   /* 
+                    pref.putInt("counter", -1);
+                    pref.putInt("num_of_games", 0);
+                    pref.putInt("num_of_win_games", 0);
+                    */
+
+                }
+
+                if (text.indexOf("Settings") != -1) {
+                    keyboardJson = "[[\"Volume ⬆️🔊\", \"Volume ⬇️🔊\"]]";
+                    bot.sendMessageWithReplyKeyboard(chat_id, "Choose one of the settings ", "", keyboardJson, true);
+                    state_message = SETTINGS_STATE;
+                    break;
+                    case SETTINGS_STATE:
+                        keyboardJson = "[[\"/new\",\"/quit\" ], [\"statistics\" ,\"/rank\"] ,[\"/settings\"]]";
+                    if (text.indexOf("Volume ⬆️🔊") != -1) {
+                        volume = (volume < 29) ? volume + 1 : volume;
+                        set_volume(volume);
+                        bot.sendMessageWithReplyKeyboard(chat_id, "", "", keyboardJson, true);
+                    }
+                    if (text.indexOf("Volume ⬇️🔊") != -1) {
+                        volume = (volume > 1) ? volume - 2 : volume;
+                        set_volume(volume);
+                        bot.sendMessageWithReplyKeyboard(chat_id, "", "", keyboardJson, true);
+                    }
+                    state_message = STATE_WAITING_NEXT_GAME;
+                    break;
+                }
+
+        }
+    }
+}
+
+bool compareUserData(std::pair<int,UserData> & a , std::pair<int,UserData> & b){
+if ((a.second.time / (a.second.numPresses)) < (b.second.time / b.second.numPresses)){
+return true;
+}else
+return false;
+}
+
+void telegramSetup(){
+#ifdef ESP8266
+    configTime(0, 0, "pool.ntp.org");      // get UTC time via NTP
+    client.setTrustAnchors(&cert); // Add root certificate for api.telegram.org
+#endif
+    // Connect to Wi-Fi
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+#ifdef ESP32
+    client.setCACert(TELEGRAM_CERTIFICATE_ROOT); // Add root certificate for api.telegram.org
+#endif
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.println("Connecting to WiFi..");
+    }
+    // Print ESP32 Local IP Address
+    Serial.println(WiFi.localIP());
+    pref.begin("stats",false);
+    Ids.begin("ids",false);
+    delay(100);
+
+
+}
+void handleBot(){
+    if (millis() > lastTimeBotRan + botRequestDelay)  {
+        int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+
+        while(numNewMessages) {
+            Serial.println("got response");
+            handleNewMessages(numNewMessages);
+            numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+        }
+        lastTimeBotRan = millis();
+    }
+}
+string makeRankTable(){
+    std::vector<std::pair<int, UserData>> vec (userMap.begin(), userMap.end());
+    std::sort(vec.begin(), vec.end(),compareUserData);
+    int counterRank = 1;
+
+    string tableRanks =  "| Rank |        -Id-         |   Average Response   |\n";
+    for (std::vector<std::pair<int, UserData>>::const_iterator it = vec.begin(); it != vec.end(); ++it) {
+        sprintf(idResultRanking, "%d", it->first);
+        sprintf(timeResultRanking, "%f", it->second.time);
+        sprintf(pressesResultRanking, "%d", it->second.numPresses);
+        avg = it->second.time / it->second.numPresses ;
+        sprintf(avgResultRanking, "%.3f", avg);
+        sprintf(rankResult, "%d", counterRank);
+        if(counterRank >= 10){
+            tableRanks += "|  -";
+            tableRanks += rankResult;
+            tableRanks += "-  | ";
+        }else{
+            tableRanks += "|   -";
+            tableRanks += rankResult;
+            tableRanks += "-   | ";
+        }
+
+        tableRanks += idResultRanking;
+        if((it->second.time / it->second.numPresses) > 9.999 ){
+            tableRanks += " | ";
+        }else{
+            tableRanks += " |   ";
+        }
+        tableRanks += avgResultRanking;
+        tableRanks += " [sec/presses] |\n";
+        counterRank++;
+    }
+    
+    return tableRanks;
+}
+//////////////////////////////////////functions//////////////////////////////
+
+bool level_switch = true;
+int buttons_state[] = { HIGH, HIGH, HIGH, HIGH, HIGH };
+int last_buttons_state[] = { HIGH, HIGH, HIGH, HIGH, HIGH };
+int readings[] = { HIGH, HIGH, HIGH, HIGH, HIGH };  //////// we need to check it
+int num_of_buttons = 5;
+
+void sortMapByTime() {
+    std::vector<std::pair<int, UserData>> vec(userMap.begin(), userMap.end());
+
+    std::sort(vec.begin(), vec.end(),compareUserData);
+
+    userMap.clear();
+    for (std::vector<std::pair<int, UserData>>::const_iterator it = vec.begin(); it != vec.end(); ++it) {
+        Serial.println(it->first);
+        userMap[it->first] = it->second;
+    }
+}
+
+void insertUser(int userId, int presses,double time) {
+    UserData user = {presses, time};
+    userMap[userId] = user;
+    string userStr = to_string(userId);
+    total_keys +=1;
+    Ids.putInt("total_keys",total_keys);
+    // pref.putBytes(userStr.c_str(),user, sizeof(user)); //added the user data to the preferences file
+}
+
+void wrongButton(int LedNumber) {
+    total_time += (millis() - ledStartTime);
+    Serial.println("Button 1 is Pressed and Led 2 Turn on .... Game Over GG");
+    playcolorsound(1, 8); // todo: put fail music in index 7
+    digitalWrite(LED1_PIN, LOW);
+    digitalWrite(LED2_PIN, LOW);
+    digitalWrite(LED3_PIN, LOW);
+    digitalWrite(LED4_PIN, LOW);
+    digitalWrite(LED5_PIN, LOW);
+    ledOn = false;
+    current_state = STATE_LOSE;
+}
+
+void winHandler(int LedNumber) {
+    playcolorsound(1, 7); // todo: put win music in index 8
+    digitalWrite(led_pins[LedNumber - 1], LOW);
+    ledOn = false;
+    current_state = STATE_WIN;
+}
+
+
+void rightButton(int LedNumber) {
+    total_time += (millis() - ledStartTime);
+    if ((counter + 1) % 16 == 0) {
+        /*if (level == 5) {
+            avg_response = total_time / 80;
+            if (num_of_win_games == 0) {
+                min_total_time = total_time;
+                highest_avg_response = avg_response;
+            }
+            if (avg_response < highest_avg_response) {
+                highest_avg_response = avg_response;
+            }
+            if(min_total_time > total_time){
+                min_total_time = total_time;
+            }
+            num_of_win_games++;
+            counter++;
+            winHandler(LedNumber);
+        } else {
+            //updatePixels();
+            level = level + 1;
+            digitalWrite(led_pins[ LedNumber - 1 ], LOW);
+            playcolorsound(1, 7); // todo: put level up music in index 9
+            ledOnTime = levels_time[level - 1];
+            level_switch = true;
+        }*/
+        winHandler(LedNumber);
+    } else {
+        //updatePixels(); //todo : check what this code bloc does
+        playcolorsound(1, 7);//todo : check the number // put the sound of right button
+        digitalWrite(led_pins[LedNumber - 1], LOW);
+    }
+
+    shuffleArray(numbers,n);
+    delay(100);
+
+
+    stripColors(ndx);
+    delay(1000);
+    ledOn = false;
+
+}
+
+void timeOutHandler() {
+    playcolorsound(1, 8); // todo: put timeout music in index 10
+    digitalWrite(LED1_PIN, LOW);
+    digitalWrite(LED2_PIN, LOW);
+    digitalWrite(LED3_PIN, LOW);
+    digitalWrite(LED4_PIN, LOW);
+    digitalWrite(LED5_PIN, LOW);
+    Serial.println("TIME OUT............. LOSE THE GAME");
+    ledOn = false;
+    current_state = STATE_LOSE;
+}
+
+int prevLEDNumber = 0;
+
+
+
+
+#define BLUE_SOUND_INDEX 1
+#define GREEN_SOUND_INDEX 2
+#define RED_SOUND_INDEX 3
+#define WHITE_SOUND_INDEX 4
+#define YELLOW_SOUND_INDEX 5
+#define DEFAULT_SOUND_INDEX 6
+#define NUM_COLORS 5
+
+int8_t turnOnLed() {
+    stripColors(0);
+
+
+    prevLEDNumber = currentLEDNumber;
+    ndx = random(1, 6);
+    currentLEDNumber = ndx;
+
+    String colorname;
+    // Play color sound corresponding to the randomly chosen index
+    int soundtoplay;
+    switch (ndx) {
+        case 1:
+            soundtoplay = BLUE_SOUND_INDEX;
+            colorname = "Blue";
+            break;
+        case 2:
+            soundtoplay = GREEN_SOUND_INDEX;
+            colorname = "Green";
+            break;
+        case 3:
+            soundtoplay = RED_SOUND_INDEX;
+            colorname = "Red";
+            break;
+        case 4:
+            soundtoplay = WHITE_SOUND_INDEX;
+            colorname = "White";
+            break;
+        case 5:
+            soundtoplay = YELLOW_SOUND_INDEX;
+            colorname = "Yellow" ;
+            break;
+        default:
+            // Handle invalid index
+            soundtoplay = DEFAULT_SOUND_INDEX;
+            break;
+    }
+    if(digitalRead(SWITCH_PIN)==LOW){
+
+        playcolorsound(1, soundtoplay);
+    }
+    stripColors(0);
+
+    // Check NeoPixel color at the chosen index
+    //uint32_t colorhex = NeoPixel.getPixelColor(ndx - 1);
+    //String colorname = getColorName(colorhex);
+    // Find the LED number matching the color
+    int8_t matchedLEDNumber = -1;
+
+    uint32_t temp;
+    String color_check;
+    delay(100);
+    for (int i = 0; i < NUM_COLORS; ++i) {
+        temp = NeoPixel.getPixelColor(i);
+        color_check =  getColorName(temp) ;
+
+        if (  colorname == color_check  )
+        {
+            matchedLEDNumber = i ; // LED numbers start from 1
+            break;
+        }
+    }
+
+
+    int get_index;
+    for(int i=1 ; i<=5 ;i++){
+        if( first_mapping[i] == matchedLEDNumber ){
+            get_index = i;
+        }
+    }
+
+
+
+    delay(100);
+    if (prevLEDNumber == currentLEDNumber) {
+        int flickerDelay = random(90, 100); // Random delay between flickers (adjust as needed)
+        delay(flickerDelay);
+        if(digitalRead(SWITCH_PIN)==HIGH){
+            digitalWrite(led_pins[get_index - 1], HIGH); // Turn on the LED
+            delay(100);        // Delay for a short period
+            digitalWrite(led_pins[get_index - 1], LOW);  // Turn off the LED
+        }
+        delay(flickerDelay);        // Delay for a short period
+    }
+    counter++;
+    if(digitalRead(SWITCH_PIN)==HIGH){
+        digitalWrite(led_pins[get_index - 1], HIGH);
+    }
+    ledStartTime = millis();
+    ledOn = true;
+    return get_index;
+}
+/////////////////////////////////////////////////////////////////////////////////
+/*void updatePixels() {
+    // Clear all pixels
+    //NeoPixel.clear();
+    // Turn on specific pixel for other levels
+    int current_counter = (counter) % 16;
+
+    for (int i = 0; i < current_counter+1; i++) {
+        NeoPixel.setPixelColor(i, colors[i]);
+    }
+    NeoPixel.show();  // Show the updated state
+}*/
+
+void stripColors(int ndx ){
+    NeoPixel.setBrightness(100);
+    // turn pixels to green one by one with delay between each pixel
+    NeoPixel.setPixelColor(numbers[3], NeoPixel.Color(255, 0, 0)); //red
+    NeoPixel.setPixelColor(numbers[4], NeoPixel.Color(0,255, 0));  //green
+    NeoPixel.setPixelColor(numbers[2], NeoPixel.Color(0, 0, 255));  //blue
+    NeoPixel.setPixelColor(numbers[1], NeoPixel.Color(255, 255, 0));  //yellow
+    NeoPixel.setPixelColor(numbers[0], NeoPixel.Color(255, 255, 255)); //white
+
+
+
+    NeoPixel.show();
+    uint32_t temp;
+    String color_check;
+
+    for (int i = 0; i < NUM_COLORS; ++i) {
+        temp = NeoPixel.getPixelColor(i);
+        color_check =  getColorName(temp) ;
+
+    }
+}
+
+void pinsSetup(){
+    pinMode(LED1_PIN, OUTPUT);
+    pinMode(LED2_PIN, OUTPUT);
+    pinMode(LED3_PIN, OUTPUT);
+    pinMode(LED4_PIN, OUTPUT);
+    pinMode(LED5_PIN, OUTPUT);
+    pinMode(BUTTON1_PIN, INPUT_PULLUP);
+    pinMode(BUTTON2_PIN, INPUT_PULLUP);
+    pinMode(BUTTON3_PIN, INPUT_PULLUP);
+    pinMode(BUTTON4_PIN, INPUT_PULLUP);
+    pinMode(BUTTON5_PIN, INPUT_PULLUP);
+    pinMode(START_G, INPUT_PULLUP);
+    pinMode(SWITCH_PIN, INPUT_PULLUP);
+
+}
+
+
+
+void makeTable(){
+
+    /*
+    
+    table = "|        -Id-         | Level |   Average Response   |\n";
+    //table += "|-------------------------------------------|\n";
+    table += "| ";
+    table += resultId;
+    table += " |   -";
+    table += resultLevel;
+    if(avg_response > 9.999 ){
+        table += "-   | ";
+    }else{
+        table += "-   |   ";
+    }
+    table += resultAvg;
+    table += " [sec/presses] |\n";
+    */
+    
+    table = "Id : ";
+    table += resultId;
+    table += " \n";
+    table += "Level : ";
+    table += resultLevel;
+    table += " \n";
+    table += "Average Response Time : \n";
+    table += resultAvg;
+    table += "[sec/presses] \n";
+
+}
+
+void setup() {
+  
+    Serial.begin(9600);
+    setupMP3(9600);
+    Serial.println("Start a New Game !!! Good Luck");
+    randomSeed(analogRead(A0));
+    set_volume(30);
+    pinsSetup();
+    // Initialize ring pins
+    NeoPixel.begin();
+    stripColors(0);
+    // INITIALIZE NeoPixel strip object (REQUIRED)
+    telegramSetup();
+}
+
+
+
+
+void loop() {
+
+    switch (current_state) {
+        case STATE_START:
+            if(WiFi.status() != WL_CONNECTED){
+
+                current_state = STATE_WIFI;
+                Serial.print("WiFi disconnected");
+                current_state = STATE_WIFI;
+
+                /*pref.putBytes("buttons_pins" ,buttons_pins,5* sizeof(long));
+                pref.putBytes("buttons_readings" ,buttons_pins,5* sizeof(int));
+                pref.putBytes("last_buttons_state" ,last_buttons_state,5* sizeof(int));
+                */
+
+                break;
+            }
+
+            if (digitalRead(START_G) == LOW) {
+
+                playcolorsound(1, 6); //todo: start game sound
+                current_state = STATE_GAME;
+            }
+            /*pref.putBytes("buttons_pins" ,buttons_pins,5* sizeof(long));
+            pref.putBytes("buttons_readings" ,buttons_pins,5* sizeof(int));
+            pref.putBytes("last_buttons_state" ,last_buttons_state,5* sizeof(int));*/
+            break;
+
+        case STATE_GAME:
+            /*pref.getBytes("buttons_pins" ,buttons_pins,5* sizeof(long));
+            pref.getBytes("buttons_readings" ,buttons_pins,5* sizeof(int));
+            pref.getBytes("last_buttons_state" ,last_buttons_state,5* sizeof(int));
+*/
+            if(WiFi.status() != WL_CONNECTED){
+                current_state = STATE_WIFI;
+                Serial.print("WiFi disconnected");
+                current_state = STATE_WIFI;
+                break;
+            }
+
+
+            if (!ledOn) {
+                ndx = turnOnLed();
+            }
+            /*
+            if (ledOn && (millis() - ledStartTime >= ledOnTime)) {
+                timeOutHandler();
+                break;
+            }*/
+
+            for (int a = 0; a < num_of_buttons; a++) {
+
+                readings[a] = digitalRead(buttons_pins[a]);
+                /*pref.putBytes("buttons_readings" ,readings,5* sizeof(int));*/
+            }
+            if (readings[0] != last_buttons_state[0] || readings[1] != last_buttons_state[1] || readings[2] != last_buttons_state[2] || readings[3] != last_buttons_state[3] || readings[4] != last_buttons_state[4]) {
+                lastDebounceTime = millis();
+            }
+            if (millis() - lastDebounceTime > debounceDelay ) {
+                lastLedPressedTime = millis();
+                for (int i = 0; i < num_of_buttons; i++) {
+                    if (readings[i] != buttons_state[i]) {
+                        buttons_state[i] = readings[i];
+                        if (buttons_state[i] == LOW && ndx == i + 1)
+                        {
+                            rightButton(i + 1);
+                        } else
+                        if (buttons_state[i] == LOW && ndx != i + 1)
+                        {
+                            wrongButton(i + 1);
+                        }
+                    }
+                }
+            }
+            for (int b = 0; b < num_of_buttons; b++) {
+                last_buttons_state[b] = readings[b];
+            }
+/*
+            pref.putBytes("buttons_pins" ,buttons_pins,5* sizeof(long));
+            pref.putBytes("buttons_readings" ,buttons_pins,5* sizeof(int));
+            pref.putBytes("last_buttons_state" ,last_buttons_state,5* sizeof(int));
+            */
+            break;
+        case STATE_WIN:
+
+
+            total_time = total_time /1000;
+            avg_response = total_time / 16;
+            sprintf(resultAvg, "%.3f", avg_response);
+            sprintf(resultLevel , "%d" ,level);
+            sprintf(resultId, "%d", user_id);
+/*
+            pref.getBytes("resultAvg" ,resultAvg, 50* sizeof(char) );
+            pref.getBytes("resultLevel" ,resultLevel,50* sizeof(char) );
+            pref.getBytes("resultId" ,resultId,50* sizeof(char) );
+*/
+            makeTable();
+
+
+            bot.sendMessage(chat_id, table.c_str(), "");
+            tot_time = 0;
+            if(userMap.find(user_id) != userMap.end()){
+                if((total_time / (counter+extra)) < (userMap[user_id].time / userMap[user_id].numPresses)){
+                    counter = 16;
+                }
+                userMap.erase(user_id);
+                total_keys -=1;
+            }
+            insertUser(user_id ,counter, total_time);
+            keyboardJson = "[[\" /new \",\" /quit \" ], [\" /statistics \" ,\" /rank \"] ,[\" /settings\"]]";
+            bot.sendMessageWithReplyKeyboard(chat_id, "Would you like to start a new game? ", "", keyboardJson, true);
+            current_state = STATE_IDLE;
+
+            // sprintf(user_id_ch, "%d", user_id);
+           to_put_value = "Ids" + String("_")+String(total_keys)+ String("t");
+            Ids.putDouble(to_put_value.c_str() , double(total_time)/16);
+
+            /*
+            pref.putBytes("resultAvg" ,resultAvg,50* sizeof(char ));
+            pref.putBytes("resultLevel" ,resultLevel,50* sizeof(char));
+            pref.putBytes("resultId" ,resultId,50* sizeof(char));
+            */
+
+            break;
+        case STATE_LOSE:
+
+            /*pref.getBytes("resultAvg" ,resultAvg,50* sizeof(char ));
+            pref.getBytes("resultLevel" ,resultLevel,50* sizeof(char));
+            pref.getBytes("resultId" ,resultId,50* sizeof(char));*/
+
+            total_time = total_time /1000;
+            Serial.println("your total_time:");
+            Serial.println(total_time);
+            Serial.println("your counter :");
+            Serial.println(counter);
+
+            sprintf(resultTime, "%.3f", total_time);
+
+            avg_response = total_time / counter ;
+            sprintf(resultAvg, "%.3f", avg_response);
+            sprintf(resultId, "%d", user_id);
+            sprintf(result, "%d", counter);
+            sprintf(resultLevel , "%d" ,level);
+            makeTable();
+
+            bot.sendMessage(chat_id, table.c_str(), "");
+            keyboardJson = "[[\" /new \",\" /quit \" ], [\" /statistics \" ,\" /rank \"] ,[\" /Settings \"]]";
+            bot.sendMessageWithReplyKeyboard(chat_id, "Would you like to start a new game? ", "", keyboardJson, true);
+            current_state = STATE_IDLE;
+
+            if(userMap.find(user_id) != userMap.end()){
+                if((total_time / (counter)) < (userMap[user_id].time / userMap[user_id].numPresses)){
+                    counter = counter;
+                }
+                userMap.erase(user_id);
+                total_keys -=1;
+
+            }
+            insertUser(user_id, counter , total_time );
+            /*pref.putBytes("resultAvg" ,resultAvg,50* sizeof(char ));
+            pref.putBytes("resultLevel" ,resultLevel,50* sizeof(char));
+            pref.putBytes("resultId" ,resultId,50* sizeof(char));*/
+            //sprintf(user_id_ch, "%d", user_id);
+
+            to_put_value1 = "Ids" + String("_")+String(total_keys)+ String("t");
+            Ids.putDouble(to_put_value1.c_str() , double(total_time)/counter);
+
+            break;
+        case STATE_IDLE:
+            if(WiFi.status() != WL_CONNECTED){
+                //current_state = STATE_WIFI;
+                Serial.print("WiFi disconnected");
+
+                // send to the telegram bot that the wifi has been disconnected
+                counter = 0 ;
+                //prev_state = current_state;
+                current_state = STATE_WIFI_IDLE;
+                break;
+            }
+            total_keys = Ids.getInt("total_keys",0);
+            
+            // digitalWrite(START_R, HIGH);
+
+            if (digitalRead(START_G) == LOW) {
+                playcolorsound(1, 6); //todo: start game sound
+                delay(1000);
+                current_state = STATE_GAME;
+            }
+
+            handleBot();
+            break;
+        case STATE_WIFI:
+            wifiManager.resetSettings();//remove any previous wifi settings
+            wifiManager.setMenu(menu);
+            while (!wifiManager.autoConnect("IOT_QUICK")) {
+
+                Serial.println("Failed to connect");
+            }
+            connection = true;
+            Serial.println("WiFi connected");
+            Serial.print("IP address: ");
+            Serial.println(WiFi.localIP());
+            bot.sendMessage(chat_id, "Now you are coneected again. Press the red button to continue the game! ", "");
+            current_state = STATE_START;
+            break;
+        case STATE_WIFI_IDLE:
+            wifiManager.resetSettings();//remove any previous wifi settings
+            wifiManager.setMenu(menu);
+
+            res = wifiManager.autoConnect("IOT_QUICK");
+            while (!res) {
+                Serial.println("Failed to connect");
+            }
+            connection = true;
+            Serial.println("WiFi connected");
+            Serial.print("IP address: ");
+            Serial.println(WiFi.localIP());
+            current_state = STATE_IDLE;
+            break;
+    }
+}
+
+// Function to create a chasing effect

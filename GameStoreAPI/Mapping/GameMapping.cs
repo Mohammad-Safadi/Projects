@@ -22,8 +22,7 @@ public static class GameMapping
         return new Game
         {
             Name = gameDto.Name,
-            GenreId
-            Id = gameDto.Id,
+            GenreId = gameDto.GenreId,
             Price = gameDto.Price,
             ReleaseDate = gameDto.ReleaseDate
         };

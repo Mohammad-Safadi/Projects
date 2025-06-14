@@ -4,6 +4,7 @@ namespace GameStoreAPI.Endpoints;
 
 using GameStoreAPI.Dtos;
 using GameStoreAPI.Entities;
+using GameStoreAPI.Mapping;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -27,36 +28,23 @@ public static class GamesEndpoints
         group.MapGet("/", () => games);
 
         // Get /games/{id}
-        group.MapGet("/{id:int}", (int id) =>
+        group.MapGet("/{id:int}", (int id , GameStoreAPI.Data.GameStoreContext dbContext) =>
         {
-            var game = games.FirstOrDefault(g => g.Id == id);
-            return game is not null ? Results.Ok(game) : Results.NotFound();
+            var game = dbContext.Games.Find(id);
+            return game is not null ? Results.Ok(game.FromEntityToDto()) : Results.NotFound();
         })
         .WithName(GetGameEndpointName);
 
         group.MapPost("/", (CreateGameDto createGameDto, GameStoreAPI.Data.GameStoreContext dbContext) =>
         {
-            Game newGame = new()
-            {
-                Name = createGameDto.Name,
-                Genre = dbContext.Genres.Find(createGameDto.GenreId),
-                GenreId = createGameDto.GenreId,
-                Price = createGameDto.Price,
-                ReleaseDate = createGameDto.ReleaseDate
-            };
+            Game mappedGame = createGameDto.FromDtoToEntity();
+            mappedGame.Genre = dbContext.Genres.Find(createGameDto.GenreId);
 
-            dbContext.Games.Add(newGame); // to add the new game to the database
+            dbContext.Games.Add(mappedGame);
             dbContext.SaveChanges(); // to save changes to the database 
 
-            GameDto newGameDto = new GameDto(
-                newGame.Id,
-                newGame.Name,
-                newGame.Genre!.Name,
-                newGame.Price,
-                newGame.ReleaseDate
-            );
 
-            return Results.CreatedAtRoute(GetGameEndpointName, new { id = newGame.Id }, newGameDto);
+            return Results.CreatedAtRoute(GetGameEndpointName, new { id = mappedGame.Id }, mappedGame.FromEntityToDto());
 
         }).WithParameterValidation();
 

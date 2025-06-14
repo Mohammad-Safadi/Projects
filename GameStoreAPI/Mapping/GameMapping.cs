@@ -6,12 +6,22 @@ namespace GameStoreAPI.Mapping;
 
 public static class GameMapping
 {
-    public static GameDto FromEntityToDto(this Game game)
+    public static GameSummaryDto FromEntityToGameSummaryDto(this Game game)
     {
-        return new GameDto(
+        return new GameSummaryDto(
             Id: game.Id,
             Name: game.Name,
             Genre: game.Genre!.Name,
+            Price: game.Price,
+            ReleaseDate: game.ReleaseDate
+        );
+    }
+    public static GameDetailsDto FromEntityToGameDetailsDto(this Game game)
+    {
+        return new GameDetailsDto(
+            Id: game.Id,
+            Name: game.Name,
+            GenreId: game.GenreId,
             Price: game.Price,
             ReleaseDate: game.ReleaseDate
         );

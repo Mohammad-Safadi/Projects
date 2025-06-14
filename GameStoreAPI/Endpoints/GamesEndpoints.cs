@@ -11,11 +11,11 @@ using System.Linq;
 public static class GamesEndpoints
 {
     const string GetGameEndpointName = "GetGame";
-    private static readonly List<GameDto> games = new List<GameDto>
+    private static readonly List<GameSummaryDto> games = new List<GameSummaryDto>
     {
-        new GameDto(1, "The Legend of Zelda: Breath of the Wild", "Action-Adventure", 59.99m, new DateOnly(2017, 3, 3)),
-        new GameDto(2, "Super Mario Odyssey", "Platformer", 59.99m, new DateOnly(2017, 10, 27)),
-        new GameDto(3, "Animal Crossing: New Horizons", "Simulation", 59.99m, new DateOnly(2020, 3, 20))
+        new GameSummaryDto(1, "The Legend of Zelda: Breath of the Wild", "Action-Adventure", 59.99m, new DateOnly(2017, 3, 3)),
+        new GameSummaryDto(2, "Super Mario Odyssey", "Platformer", 59.99m, new DateOnly(2017, 10, 27)),
+        new GameSummaryDto(3, "Animal Crossing: New Horizons", "Simulation", 59.99m, new DateOnly(2020, 3, 20))
     };
     
     public static RouteGroupBuilder MapEndpoints(this WebApplication app)
@@ -44,7 +44,7 @@ public static class GamesEndpoints
             dbContext.SaveChanges(); // to save changes to the database 
 
 
-            return Results.CreatedAtRoute(GetGameEndpointName, new { id = mappedGame.Id }, mappedGame.FromEntityToDto());
+            return Results.CreatedAtRoute(GetGameEndpointName, new { id = mappedGame.Id }, mappedGame.FromEntityToGameDetailsDto());
 
         }).WithParameterValidation();
 

@@ -2,7 +2,7 @@ GET http://localhost:5182/games
 
 ###
 
-GET http://localhost:5182/games/3
+GET http://localhost:5182/games/2
 
 ###
 POST http://localhost:5182/games
@@ -10,19 +10,19 @@ Content-Type: application/json
 
 {
     "Name": "Street II",
-    "genreId": 2,
+    "genreId": 1,
     "Price": 77.99,
     "ReleaseDate": "2023-05-12"
 }
 
 ###
-PUT http://localhost:5182/games/5
+PUT http://localhost:5182/games/2
 Content-Type: application/json
 
 {
-    "Name": "The Legend of Zelda: Tears of the Kingdom",
-    "Genre": "Action-Adventure",
-    "Price": 59.99,
+    "Name": "Street Fighter II Turb",
+    "genreId": 1,
+    "Price": 19.99,
     "ReleaseDate": "2023-05-12"
 }
 ###

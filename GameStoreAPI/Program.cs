@@ -1,4 +1,3 @@
-
 using GameStoreAPI.Data;
 using GameStoreAPI.Endpoints;
 
@@ -9,7 +8,21 @@ var connectionString = builder.Configuration.GetConnectionString("GameStoreConte
 
 builder.Services.AddSqlite<GameStoreContext>(connectionString);
 
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 var app = builder.Build(); 
+
+// Use CORS
+app.UseCors();
 
 app.MapEndpoints();
 

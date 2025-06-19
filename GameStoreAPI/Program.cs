@@ -13,7 +13,9 @@ var app = builder.Build();
 
 app.MapEndpoints();
 
-app.MigrateDb();
+app.MapGenreEndpoints();
+
+await app.MigrateDbAsync();
 
 app.Run();
  

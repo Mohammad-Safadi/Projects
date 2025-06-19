@@ -22,21 +22,22 @@ public static class GamesEndpoints
                     .WithParameterValidation();
 
         // Get /games
-        group.MapGet("/", (GameStoreContext dbContext) =>
+        group.MapGet("/", async (GameStoreContext dbContext) => 
         {
-            var gameSummaries = dbContext.Games
-            .Include(g => g.Genre)
-            .Select(g => g.FromEntityToGameSummaryDto());
+            var gameSummaries = await  dbContext.Games
+            .Include(g => g.Genre) // otherwise Genre will be null
+            .Select(g => g.FromEntityToGameSummaryDto())
+            .AsNoTracking() //used to improve performance by not tracking changes since the entities are not modified
+            // and used to read data only
+            .ToListAsync();
 
-            var sql = gameSummaries.ToQueryString();
-            Console.WriteLine($"SQL Query: {sql}");
-            return Results.Ok(gameSummaries.ToList());
+            return Results.Ok(gameSummaries);
         });
 
         // Get /games/{id}
-        group.MapGet("/{id:int}", (int id, GameStoreAPI.Data.GameStoreContext dbContext) =>
+        group.MapGet("/{id:int}", async  (int id, GameStoreAPI.Data.GameStoreContext dbContext) =>
         {
-            var game = dbContext.Games.Find(id);
+            var game = await dbContext.Games.FindAsync(id);
 
             return game is not null
                 ? Results.Ok(game.FromEntityToGameDetailsDto())
@@ -45,20 +46,20 @@ public static class GamesEndpoints
         
         .WithName(GetGameEndpointName);
 
-        group.MapPost("/", (CreateGameDto createGameDto, GameStoreAPI.Data.GameStoreContext dbContext) =>
+        group.MapPost("/", async (CreateGameDto createGameDto, GameStoreAPI.Data.GameStoreContext dbContext) =>
         {
             Game mappedGame = createGameDto.FromDtoToEntity();
 
             dbContext.Games.Add(mappedGame);
-            dbContext.SaveChanges(); // to save changes to the database 
+            await dbContext.SaveChangesAsync(); // Save changes to the database 
 
             return Results.CreatedAtRoute(GetGameEndpointName, new { id = mappedGame.Id }, mappedGame.FromEntityToGameDetailsDto());
 
         }).WithParameterValidation();
 
-        group.MapPut("/{id}", (int id, UpdateGameDto updateGameDto, GameStoreAPI.Data.GameStoreContext dbContext) =>
+        group.MapPut("/{id}", async (int id, UpdateGameDto updateGameDto, GameStoreAPI.Data.GameStoreContext dbContext) =>
         {
-            var existingGame = dbContext.Games.Find(id);
+            var existingGame = await  dbContext.Games.FindAsync(id);
             if (existingGame is null)
             {
                 return Results.NotFound();
@@ -68,23 +69,19 @@ public static class GamesEndpoints
                         .CurrentValues
                         .SetValues(updateGameDto.ToEntity(id));
 
-            dbContext.SaveChanges();
+            await dbContext.SaveChangesAsync();
 
             return Results.NoContent();
         });
 
         // Delete /games/{id}
-        group.MapDelete("/{id:int}", (int id, GameStoreAPI.Data.GameStoreContext dbContext) =>
+        group.MapDelete("/{id:int}", async (int id, GameStoreAPI.Data.GameStoreContext dbContext) =>
         {
-            var existingGame = dbContext.Games.Find(id);
-            if (existingGame is null)
-            {
-                return Results.NotFound();
-            }
+            await dbContext.Games.Where(g => g.Id == id)
+            .ExecuteDeleteAsync(); // ExecuteDelete is used to delete the entity without loading it into memory
 
-            dbContext.Games.Remove(existingGame);
-
-            dbContext.SaveChanges();
+            // No need to call dbContext.SaveChangesAsync() after ExecuteDeleteAsync()
+            // because ExecuteDeleteAsync() executes the command immediately.
 
             return Results.NoContent();
         });

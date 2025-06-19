@@ -24,12 +24,12 @@ public static class GamesEndpoints
         // Get /games
         group.MapGet("/", async (GameStoreContext dbContext) => 
         {
-            var gameSummaries = await  dbContext.Games
-            .Include(g => g.Genre) // otherwise Genre will be null
-            .Select(g => g.FromEntityToGameSummaryDto())
-            .AsNoTracking() //used to improve performance by not tracking changes since the entities are not modified
-            // and used to read data only
-            .ToListAsync();
+            var gameSummaries = await dbContext.Games
+                .Include(g => g.Genre) // otherwise Genre will be null
+                .Select(g => g.FromEntityToGameSummaryDto())
+                .AsNoTracking() //used to improve performance by not tracking changes since the entities are not modified
+                // and used to read data only
+                .ToListAsync();
 
             return Results.Ok(gameSummaries);
         });
@@ -52,22 +52,23 @@ public static class GamesEndpoints
 
             dbContext.Games.Add(mappedGame);
             await dbContext.SaveChangesAsync(); // Save changes to the database 
-
+            
             return Results.CreatedAtRoute(GetGameEndpointName, new { id = mappedGame.Id }, mappedGame.FromEntityToGameDetailsDto());
-
         }).WithParameterValidation();
 
         group.MapPut("/{id}", async (int id, UpdateGameDto updateGameDto, GameStoreAPI.Data.GameStoreContext dbContext) =>
         {
-            var existingGame = await  dbContext.Games.FindAsync(id);
+            var existingGame = await dbContext.Games.FindAsync(id);
             if (existingGame is null)
             {
                 return Results.NotFound();
             }
 
-            dbContext.Entry(existingGame)
-                        .CurrentValues
-                        .SetValues(updateGameDto.ToEntity(id));
+            // Update the properties manually to ensure GenreId is updated
+            existingGame.Name = updateGameDto.Name;
+            existingGame.GenreId = updateGameDto.GenreId;
+            existingGame.Price = updateGameDto.Price;
+            existingGame.ReleaseDate = updateGameDto.ReleaseDate;
 
             await dbContext.SaveChangesAsync();
 

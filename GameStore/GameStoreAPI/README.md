@@ -1,6 +1,6 @@
-# Game Store API - Clean Architecture Implementation
+# Game Store API - Clean Architecture with Controller-Based API
 
-A RESTful API for managing a video game store catalog, built with ASP.NET Core following clean architecture principles.
+A RESTful API for managing a video game store catalog, built with ASP.NET Core following clean architecture principles and using traditional controller-based approach with Swagger documentation.
 
 ## Overview
 
@@ -10,12 +10,12 @@ This API provides endpoints to manage a collection of video games, allowing oper
 
 The application follows Clean Architecture principles with the following layers:
 
-### 1. **Presentation Layer** (Endpoints)
-- **Location**: `Endpoints/`
-- **Responsibility**: Handle HTTP requests/responses, input validation, and routing
+### 1. **Presentation Layer** (Controllers)
+- **Location**: `Controllers/`
+- **Responsibility**: Handle HTTP requests/responses, input validation, and routing using traditional controller-based approach
 - **Files**: 
-  - `GamesEndpoints.cs` - Game-related API endpoints
-  - `GenresEndpoints.cs` - Genre-related API endpoints
+  - `GamesController.cs` - Game-related API endpoints using `[ApiController]` and `[Route("api/[controller]")]`
+  - `GenresController.cs` - Genre-related API endpoints using `[ApiController]` and `[Route("api/[controller]")]`
 
 ### 2. **Application Layer** (Services)
 - **Location**: `Services/`
@@ -62,28 +62,47 @@ The application follows Clean Architecture principles with the following layers:
 - Handles transaction management
 - Provides a clean API for the presentation layer
 
-### 3. **DTO Pattern (Data Transfer Objects)**
+### 3. **Controller Pattern**
+- Traditional ASP.NET Core MVC controllers
+- Uses `[ApiController]` attribute for automatic model validation
+- Implements RESTful conventions with proper HTTP status codes
+
+### 4. **DTO Pattern (Data Transfer Objects)**
 - Separates API contracts from internal data models
 - Provides clear boundaries between layers
 - Located in the `Dtos/` directory
 
-### 4. **Dependency Injection**
+### 5. **Dependency Injection**
 - All dependencies are injected through constructors
 - Services and repositories are registered in `Program.cs`
 - Promotes loose coupling and testability
 
 ## API Endpoints
 
-### Games
-- `GET /games` - List all games
-- `GET /games/{id}` - Get game by ID
-- `POST /games` - Create new game
-- `PUT /games/{id}` - Update existing game
-- `DELETE /games/{id}` - Delete game
+### Games (`/api/Games`)
+- `GET /api/Games` - List all games
+- `GET /api/Games/{id}` - Get game by ID
+- `POST /api/Games` - Create new game
+- `PUT /api/Games/{id}` - Update existing game
+- `DELETE /api/Games/{id}` - Delete game
 
-### Genres
-- `GET /genres` - List all genres
-- `GET /genres/{id}` - Get genre by ID
+### Genres (`/api/Genres`)
+- `GET /api/Genres` - List all genres
+- `GET /api/Genres/{id}` - Get genre by ID
+
+## Swagger Documentation
+
+The API includes comprehensive Swagger/OpenAPI documentation:
+
+- **Swagger UI**: Automatically opens at `http://localhost:5182` when running in development
+- **Interactive Testing**: Test all endpoints directly from the Swagger UI
+- **Auto-Generated Documentation**: Based on XML comments in controllers
+- **Request/Response Schemas**: Complete documentation of all DTOs
+
+### Accessing Swagger
+1. Run the application: `dotnet run`
+2. Browser automatically opens to Swagger UI
+3. Or manually navigate to: `http://localhost:5182`
 
 ## Error Handling
 
@@ -94,13 +113,22 @@ The application uses custom exceptions for better error handling:
 - `GenreNotFoundException` - Thrown when a genre is not found
 - `ValidationException` - Thrown for validation errors
 
+All controllers implement comprehensive try-catch blocks with proper HTTP status codes:
+- `200 OK` - Successful operations
+- `201 Created` - Resource created successfully
+- `204 No Content` - Successful operations with no content
+- `400 Bad Request` - Validation errors or invalid input
+- `404 Not Found` - Resource not found
+- `500 Internal Server Error` - Server errors
+
 ## Technologies Used
 
 - **.NET 9**: Modern, cross-platform framework
 - **ASP.NET Core**: Web framework for building HTTP-based services
 - **Entity Framework Core**: Object-database mapper for .NET
 - **SQLite**: Lightweight, serverless database engine
-- **Minimal APIs**: Modern approach to building APIs in .NET
+- **Swagger/OpenAPI**: API documentation and testing
+- **Controller-Based API**: Traditional ASP.NET Core MVC approach
 
 ## Getting Started
 
@@ -112,7 +140,8 @@ The application uses custom exceptions for better error handling:
    dotnet restore
    dotnet run
    ```
-5. The API will be available at `https://localhost:5001` or `http://localhost:5000`
+5. The API will be available at `http://localhost:5182`
+6. Swagger UI will automatically open in your browser
 
 ## Database
 
@@ -126,24 +155,42 @@ The application uses SQLite as its database, with Entity Framework Core handling
 - Includes parameter validation
 - Supports database migrations
 - Follows clean architecture principles
+- Includes comprehensive logging throughout the application
 
-## Refactoring Summary
+## Recent Updates
 
-The codebase has been refactored to follow clean architecture best practices:
+### Controller-Based API Conversion
+- ✅ **Converted from Minimal API to Controller-based API**
+- ✅ **Added `GamesController` and `GenresController`**
+- ✅ **Implemented `[ApiController]` and `[Route("api/[controller]")]` attributes**
+- ✅ **Added comprehensive XML documentation for Swagger**
 
-1. **Moved business logic** from endpoints to service classes
-2. **Created service interfaces** for better testability and dependency injection
-3. **Implemented repository pattern** for data access abstraction
-4. **Added custom exceptions** for better error handling
-5. **Configured dependency injection** for all services and repositories
-6. **Used DTOs** in all API responses instead of entities
-7. **Added comprehensive logging** throughout the application
-8. **Implemented proper exception handling** with specific exception types
+### Swagger Integration
+- ✅ **Added Swagger/OpenAPI documentation**
+- ✅ **Configured automatic browser opening**
+- ✅ **Added interactive API testing interface**
+- ✅ **Generated comprehensive API documentation**
 
-## Benefits of Clean Architecture
+### Enhanced Error Handling
+- ✅ **Implemented custom exception types**
+- ✅ **Added comprehensive try-catch blocks in controllers**
+- ✅ **Proper HTTP status code responses**
+- ✅ **Detailed error logging**
+
+### Clean Architecture Implementation
+- ✅ **Repository Pattern** for data access abstraction
+- ✅ **Service Layer Pattern** for business logic
+- ✅ **Dependency Injection** for all components
+- ✅ **DTO Pattern** for API contracts
+- ✅ **Separation of concerns** across all layers
+
+## Benefits of the Current Architecture
 
 1. **Separation of Concerns**: Each layer has a specific responsibility
 2. **Testability**: Services and repositories can be easily unit tested
 3. **Maintainability**: Changes in one layer don't affect others
 4. **Scalability**: Easy to add new features or modify existing ones
-5. **Dependency Inversion**: High-level modules don't depend on low-level modules 
+5. **Dependency Inversion**: High-level modules don't depend on low-level modules
+6. **API Documentation**: Comprehensive Swagger documentation for easy testing
+7. **Error Handling**: Robust error handling with proper HTTP status codes
+8. **Logging**: Comprehensive logging throughout the application 

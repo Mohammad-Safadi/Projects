@@ -64,7 +64,7 @@ app.UseRouting();
 app.MapControllers();
 
 await app.MigrateDbAsync();
-
+//
 // Open Swagger UI automatically in browser
 if (app.Environment.IsDevelopment())
 {

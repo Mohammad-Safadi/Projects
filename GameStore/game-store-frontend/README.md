@@ -2,8 +2,8 @@
 
 A simple React frontend for the Game Store API.
 
-## Features
-- List, add, edit, and delete games
+## Features 
+- List, add, edit, and delete  games 
 - Connects to backend at http://localhost:5182
 - Built with Vite, React, Tailwind CSS, and axios
 

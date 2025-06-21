@@ -1,10 +1,8 @@
 namespace GameStoreAPI.Endpoints;
 
-using GameStoreAPI.Data;
 using GameStoreAPI.Dtos;
-using GameStoreAPI.Entities;
-using GameStoreAPI.Mapping;
-using Microsoft.EntityFrameworkCore;
+using GameStoreAPI.Exceptions;
+using GameStoreAPI.Services;
 
 public static class GenresEndpoints
 {
@@ -15,24 +13,38 @@ public static class GenresEndpoints
                     .WithParameterValidation();
 
         // Get /genres
-        group.MapGet("/", async (GameStoreContext dbContext) =>
+        group.MapGet("/", async (IGenreService genreService) =>
         {
-            var genres = await dbContext.Genres
-                .Select(g => g.FromEntityToGenreDto())
-                .AsNoTracking()
-                .ToListAsync();
-
-            return Results.Ok(genres);
+            try
+            {
+                var genres = await genreService.GetAllGenresAsync();
+                return Results.Ok(genres);
+            }
+            catch (GameStoreException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
         });
 
         // Get /genres/{id}
-        group.MapGet("/{id:int}", async (int id, GameStoreContext dbContext) =>
+        group.MapGet("/{id:int}", async (int id, IGenreService genreService) =>
         {
-            var genre = await dbContext.Genres.FindAsync(id);
+            try
+            {
+                var genre = await genreService.GetGenreByIdAsync(id);
 
-            return genre is not null
-                ? Results.Ok(genre.FromEntityToGenreDto())
-                : Results.NotFound();
+                return genre is not null
+                    ? Results.Ok(genre)
+                    : Results.NotFound();
+            }
+            catch (ValidationException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+            catch (GameStoreException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
         });
 
         return group;

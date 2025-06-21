@@ -2,14 +2,10 @@ using System;
 
 namespace GameStoreAPI.Endpoints;
 
-using GameStoreAPI.Data;
 using GameStoreAPI.Dtos;
-using GameStoreAPI.Entities;
-using GameStoreAPI.Mapping;
+using GameStoreAPI.Exceptions;
+using GameStoreAPI.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.EntityFrameworkCore;
-using System.Collections.Generic;
-using System.Linq;
 
 public static class GamesEndpoints
 {
@@ -22,69 +18,115 @@ public static class GamesEndpoints
                     .WithParameterValidation();
 
         // Get /games
-        group.MapGet("/", async (GameStoreContext dbContext) => 
+        group.MapGet("/", async (IGameService gameService) => 
         {
-            var gameSummaries = await dbContext.Games
-                .Include(g => g.Genre) // otherwise Genre will be null
-                .Select(g => g.FromEntityToGameSummaryDto())
-                .AsNoTracking() //used to improve performance by not tracking changes since the entities are not modified
-                // and used to read data only
-                .ToListAsync();
-
-            return Results.Ok(gameSummaries);
+            try
+            {
+                var gameSummaries = await gameService.GetAllGamesAsync();
+                return Results.Ok(gameSummaries);
+            }
+            catch (GameStoreException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
         });
 
         // Get /games/{id}
-        group.MapGet("/{id:int}", async  (int id, GameStoreAPI.Data.GameStoreContext dbContext) =>
+        group.MapGet("/{id:int}", async (int id, IGameService gameService) =>
         {
-            var game = await dbContext.Games.FindAsync(id);
+            try
+            {
+                var game = await gameService.GetGameByIdAsync(id);
 
-            return game is not null
-                ? Results.Ok(game.FromEntityToGameDetailsDto())
-                : Results.NotFound();
+                return game is not null
+                    ? Results.Ok(game)
+                    : Results.NotFound();
+            }
+            catch (ValidationException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+            catch (GameStoreException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
         })
-        
         .WithName(GetGameEndpointName);
 
-        group.MapPost("/", async (CreateGameDto createGameDto, GameStoreAPI.Data.GameStoreContext dbContext) =>
+        group.MapPost("/", async (CreateGameDto createGameDto, IGameService gameService) =>
         {
-            Game mappedGame = createGameDto.FromDtoToEntity();
-
-            dbContext.Games.Add(mappedGame);
-            await dbContext.SaveChangesAsync(); // Save changes to the database 
-            
-            return Results.CreatedAtRoute(GetGameEndpointName, new { id = mappedGame.Id }, mappedGame.FromEntityToGameDetailsDto());
+            try
+            {
+                var createdGame = await gameService.CreateGameAsync(createGameDto);
+                return Results.CreatedAtRoute(GetGameEndpointName, new { id = createdGame.Id }, createdGame);
+            }
+            catch (ArgumentNullException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+            catch (GenreNotFoundException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+            catch (GameStoreException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
         }).WithParameterValidation();
 
-        group.MapPut("/{id}", async (int id, UpdateGameDto updateGameDto, GameStoreAPI.Data.GameStoreContext dbContext) =>
+        group.MapPut("/{id}", async (int id, UpdateGameDto updateGameDto, IGameService gameService) =>
         {
-            var existingGame = await dbContext.Games.FindAsync(id);
-            if (existingGame is null)
+            try
             {
-                return Results.NotFound();
+                var updatedGame = await gameService.UpdateGameAsync(id, updateGameDto);
+                
+                if (updatedGame == null)
+                {
+                    return Results.NotFound();
+                }
+
+                return Results.NoContent();
             }
-
-            // Update the properties manually to ensure GenreId is updated
-            existingGame.Name = updateGameDto.Name;
-            existingGame.GenreId = updateGameDto.GenreId;
-            existingGame.Price = updateGameDto.Price;
-            existingGame.ReleaseDate = updateGameDto.ReleaseDate;
-
-            await dbContext.SaveChangesAsync();
-
-            return Results.NoContent();
+            catch (ArgumentNullException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+            catch (ValidationException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+            catch (GenreNotFoundException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+            catch (GameStoreException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
         });
 
         // Delete /games/{id}
-        group.MapDelete("/{id:int}", async (int id, GameStoreAPI.Data.GameStoreContext dbContext) =>
+        group.MapDelete("/{id:int}", async (int id, IGameService gameService) =>
         {
-            await dbContext.Games.Where(g => g.Id == id)
-            .ExecuteDeleteAsync(); // ExecuteDelete is used to delete the entity without loading it into memory
+            try
+            {
+                var deleted = await gameService.DeleteGameAsync(id);
+                
+                if (!deleted)
+                {
+                    return Results.NotFound();
+                }
 
-            // No need to call dbContext.SaveChangesAsync() after ExecuteDeleteAsync()
-            // because ExecuteDeleteAsync() executes the command immediately.
-
-            return Results.NoContent();
+                return Results.NoContent();
+            }
+            catch (ValidationException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+            catch (GameStoreException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
         });
 
         return group;

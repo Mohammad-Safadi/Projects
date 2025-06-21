@@ -1,0 +1,30 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - 'GameStoreAPI/**'
+  pull_request:
+    paths:
+      - 'GameStoreAPI/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'  # use your actual version
+
+    - name: Restore dependencies
+      run: dotnet restore GameStoreAPI/GameStoreAPI.csproj
+
+    - name: Build project
+      run: dotnet build GameStoreAPI/GameStoreAPI.csproj --configuration Release
+
+    - name: Run tests
+      run: dotnet test GameStoreAPI/GameStoreAPI.csproj --no-build --verbosity normal

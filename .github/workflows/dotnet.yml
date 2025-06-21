@@ -1,28 +1,30 @@
-name: .NET
+name: Backend CI
 
 on:
   push:
-    branches: [ "main" ]
+    paths:
+      - 'GameStoreAPI/**'
   pull_request:
-    branches: [ "main" ]
+    paths:
+      - 'GameStoreAPI/**'
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'  # change if you're using another version
 
-    - name: Restore dependencies
-      run: dotnet restore GameStoreAPI/GameStoreAPI.csproj
+      - name: Restore dependencies
+        run: dotnet restore GameStoreAPI/GameStoreAPI.csproj
 
-    - name: Build
-      run: dotnet build GameStoreAPI/GameStoreAPI.csproj --no-restore --configuration Release
+      - name: Build project
+        run: dotnet build GameStoreAPI/GameStoreAPI.csproj --no-restore --configuration Release
 
-    - name: Test
-      run: dotnet test GameStoreAPI/GameStoreAPI.csproj --no-build --verbosity normal
+      - name: Run tests
+        run: dotnet test GameStoreAPI/GameStoreAPI.csproj --no-build --verbosity normal

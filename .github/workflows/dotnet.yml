@@ -3,10 +3,10 @@ name: Backend CI
 on:
   push:
     paths:
-      - 'GameStoreAPI/**'
+      - 'GameStore/GameStoreAPI/**'
   pull_request:
     paths:
-      - 'GameStoreAPI/**'
+      - 'GameStore/GameStoreAPI/**'
 
 jobs:
   build:
@@ -18,13 +18,13 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'  # change if you're using another version
+          dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore GameStoreAPI/GameStoreAPI.csproj
+        run: dotnet restore GameStore/GameStoreAPI/GameStoreAPI.csproj
 
       - name: Build project
-        run: dotnet build GameStoreAPI/GameStoreAPI.csproj --no-restore --configuration Release
+        run: dotnet build GameStore/GameStoreAPI/GameStoreAPI.csproj --no-restore --configuration Release
 
       - name: Run tests
-        run: dotnet test GameStoreAPI/GameStoreAPI.csproj --no-build --verbosity normal
+        run: dotnet test GameStore/GameStoreAPI/GameStoreAPI.csproj --no-build --verbosity normal

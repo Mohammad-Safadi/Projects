@@ -69,6 +69,36 @@ public class GamesController : ControllerBase
     }
 
     /// <summary>
+    /// Gets multiple games by their IDs using Dapper
+    /// </summary>
+    /// <param name="request">The request containing a list of game IDs</param>
+    /// <returns>List of games that match the provided IDs</returns>
+    [HttpPost("by-ids")]
+    public async Task<IActionResult> GetGamesByIds([FromBody] GetGamesByIdsDto request)
+    {
+        try
+        {
+            if (request == null)
+            {
+                return BadRequest("Request body cannot be null");
+            }
+
+            var games = await _gameService.GetGamesByIdsAsync(request.Ids);
+            return Ok(games);
+        }
+        catch (ValidationException ex)
+        {
+            _logger.LogWarning(ex, "Validation error for game IDs: {Ids}", string.Join(", ", request?.Ids ?? new List<int>()));
+            return BadRequest(ex.Message);
+        }
+        catch (GameStoreException ex)
+        {
+            _logger.LogError(ex, "Error occurred while retrieving games by IDs: {Ids}", string.Join(", ", request?.Ids ?? new List<int>()));
+            return Problem(ex.Message, statusCode: 500);
+        }
+    }
+
+    /// <summary>
     /// Creates a new game
     /// </summary>
     /// <param name="createGameDto">The game data to create</param>

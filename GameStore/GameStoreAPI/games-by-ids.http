@@ -1,0 +1,37 @@
+### Get games by IDs using Dapper
+POST http://localhost:5182/api/Games/by-ids
+Content-Type: application/json
+
+{
+    "ids": [1, 2, 3]
+}
+
+###
+
+### Get games by IDs - empty list
+POST http://localhost:5182/api/Games/by-ids
+Content-Type: application/json
+
+{
+    "ids": []
+}
+
+###
+
+### Get games by IDs - single ID
+POST http://localhost:5182/api/Games/by-ids
+Content-Type: application/json
+
+{
+    "ids": [1]
+}
+
+###
+
+### Get games by IDs - non-existent IDs
+POST http://localhost:5182/api/Games/by-ids
+Content-Type: application/json
+
+{
+    "ids": [999, 1000, 1001]
+} 

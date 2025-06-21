@@ -4,6 +4,9 @@ using GameStoreAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure URLs explicitly
+builder.WebHost.UseUrls("http://localhost:5182", "https://localhost:7017");
+
 var connectionString = builder.Configuration.GetConnectionString("GameStoreContext") ??
     throw new InvalidOperationException("Connection string 'GameStoreContext' not found.");
 
@@ -64,33 +67,36 @@ app.UseRouting();
 app.MapControllers();
 
 await app.MigrateDbAsync();
-//
-// Open Swagger UI automatically in browser
+
+// Display startup information
+Console.WriteLine("\n🚀 Game Store API is starting up!");
+Console.WriteLine("📖 Swagger UI will be available at: http://localhost:5182");
+Console.WriteLine("🔗 API Base URL: http://localhost:5182/api");
+Console.WriteLine("📖 Opening Swagger UI in your default browser...\n");
+
+
+// Open browser automatically in development mode
 if (app.Environment.IsDevelopment())
 {
-    var urls = app.Urls.ToArray();
-    if (urls.Length > 0)
+    try
     {
-        var url = urls[0];
-        Console.WriteLine($"\n🚀 Swagger UI is available at: {url}");
-        Console.WriteLine("📖 Opening Swagger UI in your default browser...\n");
-        
-        // Open browser automatically
-        try
+        var processInfo = new System.Diagnostics.ProcessStartInfo
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = url,
-                UseShellExecute = true
-            });
-        }
-        catch
-        {
-            // Fallback if automatic opening fails
-            Console.WriteLine($"Please open your browser and navigate to: {url}");
-        }
+            FileName = "http://localhost:5182",
+            UseShellExecute = true
+        };
+        System.Diagnostics.Process.Start(processInfo);
+        Console.WriteLine("✅ Browser opened successfully!");
+    }
+    catch (Exception ex)
+    {
+        // Fallback if automatic opening fails
+        Console.WriteLine($"⚠️  Could not open browser automatically: {ex.Message}");
+        Console.WriteLine("📖 Please open your browser and navigate to: http://localhost:5182");
     }
 }
 
-app.Run();
- 
+await app.RunAsync();
+
+
+

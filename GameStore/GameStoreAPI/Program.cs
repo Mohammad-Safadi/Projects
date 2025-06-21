@@ -29,7 +29,6 @@ builder.Services.AddCors(options =>
     });
 });
 
-//just to test the CI
 var app = builder.Build(); 
 
 // Use CORS

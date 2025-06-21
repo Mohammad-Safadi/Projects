@@ -66,6 +66,35 @@ public class GameService : IGameService
         }
     }
 
+    public async Task<IEnumerable<GameSummaryDto>> GetGamesByIdsAsync(List<int> ids)
+    {
+        try
+        {
+            if (ids == null || !ids.Any())
+            {
+                _logger.LogWarning("Empty or null list of game IDs provided");
+                return Enumerable.Empty<GameSummaryDto>();
+            }
+
+            if (ids.Any(id => id <= 0))
+            {
+                _logger.LogWarning("Invalid game IDs found in the list: {Ids}", string.Join(", ", ids.Where(id => id <= 0)));
+                throw new ValidationException("All game IDs must be greater than 0");
+            }
+
+            var games = await _gameRepository.GetByIdsAsync(ids);
+            var gameSummaries = games.Select(g => g.FromEntityToGameSummaryDto()).ToList();
+
+            _logger.LogInformation("Retrieved {Count} games from database using Dapper", gameSummaries.Count);
+            return gameSummaries;
+        }
+        catch (Exception ex) when (ex is not ValidationException)
+        {
+            _logger.LogError(ex, "Error occurred while retrieving games by IDs: {Ids}", string.Join(", ", ids));
+            throw new GameStoreException("Failed to retrieve games from database", ex);
+        }
+    }
+
     public async Task<GameDetailsDto> CreateGameAsync(CreateGameDto createGameDto)
     {
         try

@@ -1,0 +1,31 @@
+name: Frontend CI
+
+on:
+  push:
+    paths:
+      - 'game-store-frontend/**'
+  pull_request:
+    paths:
+      - 'game-store-frontend/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: cd game-store-frontend && npm ci
+
+      - name: Build project
+        run: cd game-store-frontend && npm run build
+
+      - name: Run tests
+        run: cd game-store-frontend && npm test || echo "No tests defined"

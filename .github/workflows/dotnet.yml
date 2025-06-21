@@ -1,4 +1,4 @@
-name: Backend CI
+name: dotnet CI
 
 on:
   push:
@@ -13,12 +13,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET 9.0
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '9.0.x'
+
+      - name: Verify installed SDKs
+        run: dotnet --list-sdks  # 👈 Shows installed versions
 
       - name: Restore dependencies
         run: dotnet restore GameStore/GameStoreAPI/GameStoreAPI.csproj

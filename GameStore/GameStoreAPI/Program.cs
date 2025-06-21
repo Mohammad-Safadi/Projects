@@ -33,7 +33,7 @@ var app = builder.Build();
 
 // Use CORS
 app.UseCors();
-
+// just to test the CI
 app.MapEndpoints();
 
 app.MapGenreEndpoints();

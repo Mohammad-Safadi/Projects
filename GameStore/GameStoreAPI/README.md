@@ -82,6 +82,7 @@ The application follows Clean Architecture principles with the following layers:
 ### Games (`/api/Games`)
 - `GET /api/Games` - List all games
 - `GET /api/Games/{id}` - Get game by ID
+- `POST /api/Games/by-ids` - Get multiple games by their IDs (using Dapper)
 - `POST /api/Games` - Create new game
 - `PUT /api/Games/{id}` - Update existing game
 - `DELETE /api/Games/{id}` - Delete game
@@ -89,6 +90,53 @@ The application follows Clean Architecture principles with the following layers:
 ### Genres (`/api/Genres`)
 - `GET /api/Genres` - List all genres
 - `GET /api/Genres/{id}` - Get genre by ID
+
+## New Dapper-Based Endpoint
+
+### Get Games by IDs (`POST /api/Games/by-ids`)
+
+This endpoint uses Dapper for high-performance data access to retrieve multiple games by their IDs in a single database query.
+
+**Request Body:**
+```json
+{
+    "ids": [1, 2, 3, 4, 5]
+}
+```
+
+**Response:**
+```json
+[
+    {
+        "id": 1,
+        "name": "Game Name",
+        "genre": "Action",
+        "price": 29.99,
+        "releaseDate": "2023-01-15"
+    },
+    {
+        "id": 2,
+        "name": "Another Game",
+        "genre": "Adventure",
+        "price": 39.99,
+        "releaseDate": "2023-02-20"
+    }
+]
+```
+
+**Features:**
+- **High Performance**: Uses Dapper for optimized SQL queries
+- **Batch Retrieval**: Fetches multiple games in a single database round-trip
+- **Validation**: Validates that all IDs are positive integers
+- **Error Handling**: Comprehensive error handling with proper HTTP status codes
+- **Logging**: Detailed logging for monitoring and debugging
+
+**Example Usage:**
+```bash
+curl -X POST "http://localhost:5182/api/Games/by-ids" \
+     -H "Content-Type: application/json" \
+     -d '{"ids": [1, 2, 3]}'
+```
 
 ## Swagger Documentation
 
@@ -126,6 +174,7 @@ All controllers implement comprehensive try-catch blocks with proper HTTP status
 - **.NET 9**: Modern, cross-platform framework
 - **ASP.NET Core**: Web framework for building HTTP-based services
 - **Entity Framework Core**: Object-database mapper for .NET
+- **Dapper**: Lightweight micro-ORM for high-performance data access
 - **SQLite**: Lightweight, serverless database engine
 - **Swagger/OpenAPI**: API documentation and testing
 - **Controller-Based API**: Traditional ASP.NET Core MVC approach

@@ -6,6 +6,7 @@ public interface IGameRepository
 {
     Task<IEnumerable<Game>> GetAllAsync();
     Task<Game?> GetByIdAsync(int id);
+    Task<IEnumerable<Game>> GetByIdsAsync(List<int> ids);
     Task<Game> AddAsync(Game game);
     Task<Game?> UpdateAsync(int id, Game game);
     Task<bool> DeleteAsync(int id);

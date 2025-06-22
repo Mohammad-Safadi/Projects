@@ -57,54 +57,56 @@ public class GameRepository : IGameRepository
 
     public async Task<IEnumerable<Game>> GetByIdsAsync(List<int> ids)
     {
-        if (ids == null || !ids.Any())
-        {
+        if (ids == null || ids.Count == 0)
             return Enumerable.Empty<Game>();
-        }
 
         using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
 
-        var sql = @"
+        const string sql = @"
             SELECT g.Id, g.Name, g.GenreId, g.Price, g.ReleaseDate,
-                   gen.Id as Genre_Id, gen.Name as Genre_Name
+                   gen.Id AS Genre_Id, gen.Name AS Genre_Name
             FROM Games g
             INNER JOIN Genres gen ON g.GenreId = gen.Id
             WHERE g.Id IN @Ids";
 
-        var gameDictionary = new Dictionary<int, Game>();
-        
+        var gameCache = new Dictionary<int, Game>();
+
         await connection.QueryAsync<GameDapperDto, GenreDapperDto, Game>(
             sql,
-            (gameDto, genreDto) =>
-            {
-                if (!gameDictionary.TryGetValue(gameDto.Id, out var existingGame))
-                {
-                    // Convert Dapper DTO to Game entity with proper DateOnly parsing
-                    var game = new Game
-                    {
-                        Id = gameDto.Id,
-                        Name = gameDto.Name,
-                        GenreId = gameDto.GenreId,
-                        Price = gameDto.Price,
-                        ReleaseDate = DateOnly.Parse(gameDto.ReleaseDate), // Parse string to DateOnly
-                        Genre = new Genre
-                        {
-                            Id = genreDto.Id,
-                            Name = genreDto.Name
-                        }
-                    };
-                    
-                    gameDictionary.Add(game.Id, game);
-                    return game;
-                }
-                return existingGame;
-            },
+            (gameDto, genreDto) => MapGameWithGenre(gameDto, genreDto, gameCache),
             new { Ids = ids },
             splitOn: "Genre_Id"
         );
 
-        return gameDictionary.Values;
+        return gameCache.Values;
+    }
+
+    private Game MapGameWithGenre(
+        GameDapperDto gameDto,
+        GenreDapperDto genreDto,
+        Dictionary<int, Game> cache)
+    {
+        if (!cache.TryGetValue(gameDto.Id, out var cachedGame))
+        {
+            var newGame = new Game
+            {
+                Id = gameDto.Id,
+                Name = gameDto.Name,
+                GenreId = gameDto.GenreId,
+                Price = gameDto.Price,
+                ReleaseDate = DateOnly.Parse(gameDto.ReleaseDate),
+                Genre = new Genre
+                {
+                    Id = genreDto.Id,
+                    Name = genreDto.Name
+                }
+            };
+
+            cache[gameDto.Id] = newGame;
+        }
+
+        return cache[gameDto.Id];
     }
 
     public async Task<Game> AddAsync(Game game)

@@ -17,7 +17,7 @@ public class GenresController : ControllerBase
         _genreService = genreService ?? throw new ArgumentNullException(nameof(genreService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
-
+//yhjy
     /// <summary>
     /// Gets all genres
     /// </summary>
